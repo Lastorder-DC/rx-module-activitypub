@@ -9,7 +9,7 @@
 </ul>
 
 <div class="x_page-header" style="margin-top:10px;">
-	<h2>{{ $lang->cmd_activitypub_actor_edit }} — @{{ $actor->preferred_username }}@{{ $site_domain }}</h2>
+	<h2>{{ $lang->cmd_activitypub_actor_edit }} — {{ '@' . $actor->preferred_username . '@' . $site_domain }}</h2>
 	<p class="x_text-muted">
 		@if (($actor->actor_type ?? 'board') === 'board')
 			{{ $lang->cmd_activitypub_type_board }}

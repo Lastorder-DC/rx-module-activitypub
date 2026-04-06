@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<query id="softDeleteActor" action="update">
+	<tables>
+		<table name="activitypub_actors" />
+	</tables>
+	<columns>
+		<column name="module_srl" var="module_srl" />
+		<column name="member_srl" var="member_srl" />
+		<column name="display_name" var="display_name" />
+		<column name="summary" var="summary" />
+		<column name="icon_url" var="icon_url" />
+		<column name="public_key" var="public_key" />
+		<column name="private_key" var="private_key" />
+		<column name="is_deleted" var="is_deleted" />
+	</columns>
+	<conditions>
+		<condition operation="equal" column="actor_srl" var="actor_srl" filter="number" notnull="notnull" />
+	</conditions>
+</query>

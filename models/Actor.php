@@ -98,6 +98,22 @@ class Actor
 	}
 
 	/**
+	 * preferred_username으로 활성 Actor 가져오기 (삭제되지 않은 Actor만)
+	 *
+	 * @param string $preferred_username
+	 * @return object|null
+	 */
+	public static function getActiveActorByPreferredUsername($preferred_username)
+	{
+		$actor = self::getActorByPreferredUsername($preferred_username);
+		if ($actor && ($actor->is_deleted ?? 'N') === 'Y')
+		{
+			return null;
+		}
+		return $actor;
+	}
+
+	/**
 	 * 특정 게시물/댓글에 해당하는 모든 Actor를 가져오기
 	 * 게시판 Actor + 유저 Actor(필터 통과 시)를 반환
 	 *
@@ -286,7 +302,7 @@ class Actor
 	}
 
 	/**
-	 * Actor 삭제
+	 * Actor 삭제 (소프트 삭제 - preferred_username 보존)
 	 *
 	 * @param int $actor_srl
 	 * @return object
@@ -303,10 +319,18 @@ class Actor
 		$args->actor_srl = $actor_srl;
 		executeQuery('activitypub.deleteFollowersByActorSrl', $args);
 
-		// Actor 삭제
+		// Actor 소프트 삭제 (preferred_username과 regdate만 보존)
 		$args = new \stdClass;
 		$args->actor_srl = $actor_srl;
-		return executeQuery('activitypub.deleteActor', $args);
+		$args->module_srl = 0;
+		$args->member_srl = 0;
+		$args->display_name = '';
+		$args->summary = '';
+		$args->icon_url = '';
+		$args->public_key = '';
+		$args->private_key = '';
+		$args->is_deleted = 'Y';
+		return executeQuery('activitypub.softDeleteActor', $args);
 	}
 
 	/**

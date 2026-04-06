@@ -155,7 +155,7 @@ class EventHandlers extends Base
 		}
 
 		// Actor 찾기
-		$actor = ActorModel::getActorByPreferredUsername($username);
+		$actor = ActorModel::getActiveActorByPreferredUsername($username);
 		if (!$actor)
 		{
 			http_response_code(404);

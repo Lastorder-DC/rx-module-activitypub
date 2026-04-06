@@ -63,9 +63,11 @@
 		</thead>
 		<tbody>
 			@foreach ($actor_list as $actor)
-			<tr>
+			<tr @if (($actor->is_deleted ?? 'N') === 'Y') class="x_muted" style="opacity:0.5;" @endif>
 				<td>
-					@if (($actor->actor_type ?? 'board') === 'board')
+					@if (($actor->is_deleted ?? 'N') === 'Y')
+						<span class="x_text-muted">{{ $lang->cmd_activitypub_deleted }}</span>
+					@elseif (($actor->actor_type ?? 'board') === 'board')
 						{{ $lang->cmd_activitypub_type_board }}
 					@else
 						{{ $lang->cmd_activitypub_type_user }}
@@ -73,14 +75,19 @@
 				</td>
 				<td>{{ $actor->preferred_username }}</td>
 				<td>
-					{{ $actor->type_label ?? '-' }}
-					@if (($actor->actor_type ?? 'board') === 'user' && !empty($actor->filter_mids))
-						<br /><small class="x_text-muted">{{ $lang->cmd_activitypub_filter }}: {{ implode(', ', $actor->filter_mids) }}</small>
+					@if (($actor->is_deleted ?? 'N') === 'Y')
+						<span class="x_text-muted">-</span>
+					@else
+						{{ $actor->type_label ?? '-' }}
+						@if (($actor->actor_type ?? 'board') === 'user' && !empty($actor->filter_mids))
+							<br /><small class="x_text-muted">{{ $lang->cmd_activitypub_filter }}: {{ implode(', ', $actor->filter_mids) }}</small>
+						@endif
 					@endif
 				</td>
-				<td>@{{ $actor->preferred_username }}@{{ $site_domain }}</td>
-				<td>{{ $actor->regdate }}</td>
+				<td>{{ '@' . $actor->preferred_username . '@' . $site_domain }}</td>
+				<td>{{ zdate($actor->regdate, 'Y-m-d H:i:s') }}</td>
 				<td>
+					@if (($actor->is_deleted ?? 'N') !== 'Y')
 					<a href="@url(['module' => 'admin', 'act' => 'dispActivitypubAdminActorEdit', 'actor_srl' => $actor->actor_srl])" class="x_btn x_btn-small">{{ $lang->cmd_activitypub_actor_edit }}</a>
 					<form action="./" method="post" style="display:inline;" onsubmit="return confirm('{{ $lang->confirm_delete }}');">
 						<input type="hidden" name="module" value="activitypub" />
@@ -88,6 +95,7 @@
 						<input type="hidden" name="actor_srl" value="{{ $actor->actor_srl }}" />
 						<button type="submit" class="x_btn x_btn-small x_btn-danger">{{ $lang->cmd_delete }}</button>
 					</form>
+					@endif
 				</td>
 			</tr>
 			@endforeach

@@ -12,7 +12,9 @@
 		<action name="procActivitypubAdminUpdateActorProfile" class="Controllers\Admin" />
 		<action name="procActivitypubAdminDeleteActor" class="Controllers\Admin" />
 		<!-- ActivityPub 엔드포인트 -->
-		<action name="dispActivitypubWebfinger" class="Controllers\Endpoint" />
+		<action name="dispActivitypubWebfinger" class="Controllers\Endpoint" global-route="true">
+			<route route=".well-known/webfinger" />
+		</action>
 		<action name="dispActivitypubActor" class="Controllers\Endpoint" />
 		<action name="dispActivitypubOutbox" class="Controllers\Endpoint" />
 		<action name="procActivitypubInbox" class="Controllers\Endpoint" />
