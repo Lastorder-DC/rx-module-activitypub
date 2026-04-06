@@ -61,6 +61,18 @@ class Config
 	}
 
 	/**
+	 * 본문 포함 여부 설정값 반환
+	 *
+	 * @return string 'N'(미포함), 'Y'(포함), 'cw'(CW 처리)
+	 */
+	public static function getIncludeContent()
+	{
+		$config = self::getConfig();
+		$value = $config->include_content ?? 'N';
+		return in_array($value, ['Y', 'cw'], true) ? $value : 'N';
+	}
+
+	/**
 	 * 모듈 설정을 저장하는 함수.
 	 *
 	 * @param object $config

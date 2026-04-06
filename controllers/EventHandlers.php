@@ -897,14 +897,8 @@ class EventHandlers extends Base
 		$content_text = self::truncateContent($content);
 
 		// HTML 컨텐츠 생성
-		$html_content = '<p><strong>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</strong>';
-		if ($nick_name && ($actor->actor_type ?? 'board') === 'board')
-		{
-			$html_content .= '<br /><strong>' . self::getAuthorLabel() . ': ' . htmlspecialchars($nick_name, ENT_QUOTES, 'UTF-8') . '</strong>';
-		}
-		$html_content .= '</p>';
-		$html_content .= '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
-		$html_content .= '<p><a href="' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
+		$noteContent = self::buildDocumentNoteContent($title, $content_text, $nick_name, $document_url, $actor);
+		$html_content = $noteContent['content'];
 
 		$published = date('c');
 		$note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
@@ -919,6 +913,10 @@ class EventHandlers extends Base
 			'to' => $recipients['to'],
 			'cc' => $recipients['cc'],
 		];
+		if ($noteContent['summary'] !== null)
+		{
+			$note_data['summary'] = $noteContent['summary'];
+		}
 
 		// 이미지 첨부 및 민감 표시
 		$thumbData = self::getThumbnailData($actor, $document_srl);
@@ -1034,14 +1032,8 @@ class EventHandlers extends Base
 
 		$content_text = self::truncateContent($content);
 
-		$html_content = '<p><strong>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</strong>';
-		if ($nick_name && ($actor->actor_type ?? 'board') === 'board')
-		{
-			$html_content .= '<br /><strong>' . self::getAuthorLabel() . ': ' . htmlspecialchars($nick_name, ENT_QUOTES, 'UTF-8') . '</strong>';
-		}
-		$html_content .= '</p>';
-		$html_content .= '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
-		$html_content .= '<p><a href="' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
+		$noteContent = self::buildDocumentNoteContent($title, $content_text, $nick_name, $document_url, $actor);
+		$html_content = $noteContent['content'];
 
 		$updated = date('c');
 		$note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
@@ -1056,6 +1048,10 @@ class EventHandlers extends Base
 			'to' => $recipients['to'],
 			'cc' => $recipients['cc'],
 		];
+		if ($noteContent['summary'] !== null)
+		{
+			$note_data['summary'] = $noteContent['summary'];
+		}
 
 		// 이미지 첨부 및 민감 표시
 		$thumbData = self::getThumbnailData($actor, $document_srl);

@@ -118,6 +118,9 @@ class Admin extends Base
 		$content_max_length = intval($vars->content_max_length ?? 500);
 		$config->content_max_length = max(100, min(5000, $content_max_length));
 
+		// 본문 포함 여부 설정
+		$config->include_content = in_array($vars->include_content ?? '', ['Y', 'cw'], true) ? $vars->include_content : 'N';
+
 		// Outbox 페이지당 항목 수 설정
 		$outbox_page_size = intval($vars->outbox_page_size ?? 20);
 		$config->outbox_page_size = max(5, min(100, $outbox_page_size));
