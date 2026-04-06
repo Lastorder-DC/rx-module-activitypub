@@ -19,8 +19,8 @@
 		<action name="dispActivitypubOutbox" class="Controllers\Endpoint" />
 		<action name="dispActivitypubFollowers" class="Controllers\Endpoint" />
 		<action name="dispActivitypubFollowing" class="Controllers\Endpoint" />
-		<action name="procActivitypubInbox" class="Controllers\Endpoint" method="GET|POST" />
-		<action name="procActivitypubSharedInbox" class="Controllers\Endpoint" method="GET|POST" />
+		<action name="procActivitypubInbox" class="Controllers\Endpoint" method="GET|POST" csrf_check="false" />
+		<action name="procActivitypubSharedInbox" class="Controllers\Endpoint" method="GET|POST" csrf_check="false" />
 	</actions>
 	<!-- 이벤트 핸들러 (트리거) 선언 -->
 	<eventHandlers>
