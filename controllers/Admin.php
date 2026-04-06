@@ -445,7 +445,7 @@ class Admin extends Base
 
 			$reject = Type::create('Reject', [
 				'@context' => 'https://www.w3.org/ns/activitystreams',
-				'id' => $actor_url . '/reject/' . time(),
+				'id' => $actor_url . '/reject/' . uniqid(),
 				'actor' => $actor_url,
 				'object' => [
 					'type' => 'Follow',
