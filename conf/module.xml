@@ -11,6 +11,8 @@
 		<action name="dispActivitypubAdminActorEdit" class="Controllers\Admin" />
 		<action name="procActivitypubAdminUpdateActorProfile" class="Controllers\Admin" />
 		<action name="procActivitypubAdminDeleteActor" class="Controllers\Admin" />
+		<action name="dispActivitypubAdminActorFollowers" class="Controllers\Admin" />
+		<action name="procActivitypubAdminDeleteFollower" class="Controllers\Admin" />
 		<!-- ActivityPub 엔드포인트 -->
 		<action name="dispActivitypubWebfinger" class="Controllers\Endpoint" global-route="true">
 			<route route=".well-known/webfinger" />

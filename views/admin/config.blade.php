@@ -101,6 +101,7 @@
 				<td>{{ zdate($actor->regdate, 'Y-m-d H:i:s') }}</td>
 				<td>
 					@if (($actor->is_deleted ?? 'N') !== 'Y')
+					<a href="@url(['module' => 'admin', 'act' => 'dispActivitypubAdminActorFollowers', 'actor_srl' => $actor->actor_srl])" class="x_btn x_btn-small">{{ $lang->cmd_activitypub_actor_followers }}</a>
 					<a href="@url(['module' => 'admin', 'act' => 'dispActivitypubAdminActorEdit', 'actor_srl' => $actor->actor_srl])" class="x_btn x_btn-small">{{ $lang->cmd_activitypub_actor_edit }}</a>
 					<form action="./" method="post" style="display:inline;" onsubmit="return confirm('{{ $lang->confirm_delete }}');">
 						<input type="hidden" name="module" value="activitypub" />

@@ -474,7 +474,7 @@ class EventHandlers extends Base
 	 * @param string $body
 	 * @return bool
 	 */
-	protected static function sendSignedRequest($actor, $url, $body)
+	public static function sendSignedRequest($actor, $url, $body)
 	{
 		$parsed = parse_url($url);
 		if (!$parsed || !isset($parsed['host']))

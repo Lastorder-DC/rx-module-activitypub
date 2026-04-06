@@ -4,6 +4,7 @@ namespace Rhymix\Modules\Activitypub\Controllers;
 
 use Rhymix\Modules\Activitypub\Models\Config as ConfigModel;
 use Rhymix\Modules\Activitypub\Models\Actor as ActorModel;
+use ActivityPhp\Type;
 use BaseObject;
 use Context;
 use MemberModel;
@@ -378,5 +379,89 @@ class Admin extends Base
 
 		$this->setMessage('success_deleted');
 		$this->setRedirectUrl(getNotEncodedUrl('', 'module', 'admin', 'act', 'dispActivitypubAdminConfig'));
+	}
+
+	/**
+	 * Actor 팔로워 목록 화면
+	 */
+	public function dispActivitypubAdminActorFollowers()
+	{
+		$actor_srl = intval(Context::get('actor_srl'));
+		if (!$actor_srl)
+		{
+			return new BaseObject(-1, 'msg_invalid_request');
+		}
+
+		$actor = ActorModel::getActor($actor_srl);
+		if (!$actor || ($actor->is_deleted ?? 'N') === 'Y')
+		{
+			return new BaseObject(-1, 'msg_not_founded');
+		}
+
+		$page = intval(Context::get('page')) ?: 1;
+		$followers_output = ActorModel::getFollowers($actor_srl, $page);
+		$followers = $followers_output->data ?: [];
+		if (!empty($followers) && !is_array($followers))
+		{
+			$followers = [$followers];
+		}
+
+		Context::set('actor', $actor);
+		Context::set('follower_list', $followers);
+		Context::set('page_navigation', $followers_output->page_navigation ?? null);
+		Context::set('site_domain', ActorModel::getSiteDomain());
+
+		$this->setTemplateFile('actor_followers');
+	}
+
+	/**
+	 * 팔로워 삭제 처리
+	 */
+	public function procActivitypubAdminDeleteFollower()
+	{
+		$vars = Context::getRequestVars();
+		$follower_srl = intval($vars->follower_srl ?? 0);
+		$actor_srl = intval($vars->actor_srl ?? 0);
+		if (!$follower_srl || !$actor_srl)
+		{
+			return new BaseObject(-1, 'msg_invalid_request');
+		}
+
+		// 팔로워 정보를 삭제 전에 조회 (Reject 전송에 필요)
+		$follower = ActorModel::getFollowerByFollowerSrl($follower_srl);
+		$actor = ActorModel::getActor($actor_srl);
+
+		// 팔로워 DB에서 삭제
+		$output = ActorModel::removeFollowerByFollowerSrl($follower_srl);
+		if (!$output->toBool())
+		{
+			return $output;
+		}
+
+		// 상대방 서버에 Reject(Follow) 전송
+		if ($follower && $actor && !empty($follower->follower_inbox_url))
+		{
+			$actor_url = ActorModel::getActorUrl($actor->preferred_username);
+
+			$reject = Type::create('Reject', [
+				'@context' => 'https://www.w3.org/ns/activitystreams',
+				'id' => $actor_url . '/reject/' . uniqid(),
+				'actor' => $actor_url,
+				'object' => [
+					'type' => 'Follow',
+					'actor' => $follower->follower_actor_url,
+					'object' => $actor_url,
+				],
+			]);
+
+			$body = $reject->toJson(JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+			$inbox_url = $follower->follower_inbox_url;
+
+			self::debugLog('[procActivitypubAdminDeleteFollower] Sending Reject to: ' . $inbox_url);
+			EventHandlers::sendSignedRequest($actor, $inbox_url, $body);
+		}
+
+		$this->setMessage('success_deleted');
+		$this->setRedirectUrl(getNotEncodedUrl('', 'module', 'admin', 'act', 'dispActivitypubAdminActorFollowers', 'actor_srl', $actor_srl));
 	}
 }
