@@ -4,6 +4,8 @@ namespace Rhymix\Modules\Activitypub\Controllers;
 
 use Rhymix\Modules\Activitypub\Models\Actor as ActorModel;
 use Rhymix\Modules\Activitypub\Models\Config as ConfigModel;
+use ActivityPhp\Server;
+use ActivityPhp\Server\Http\HttpSignature;
 use ActivityPhp\Type;
 use ActivityPhp\Type\TypeConfiguration;
 use Context;
@@ -17,11 +19,6 @@ use ModuleModel;
  */
 class Endpoint extends Base
 {
-	/**
-	 * HTTP Signature의 최대 유효 시간 (초 단위, 12시간)
-	 */
-	const HTTP_SIGNATURE_MAX_AGE = 43200;
-
 	/**
 	 * 초기화
 	 */
@@ -457,6 +454,11 @@ class Endpoint extends Base
 
 		// POST 요청: Activity 처리
 		$preferred_username = Context::get('preferred_username');
+		if (!$preferred_username)
+		{
+			// Rhymix의 Context가 POST 요청에서 쿼리 스트링 파라미터를 가져오지 못하는 경우를 대비한 폴백
+			$preferred_username = $_GET['preferred_username'] ?? '';
+		}
 		if (!$preferred_username)
 		{
 			$this->sendJsonResponse(['error' => 'Missing username'], 400);
@@ -946,117 +948,53 @@ class Endpoint extends Base
 	}
 
 	/**
-	 * HTTP Signature 검증
-	 * 마스토돈 스펙에 따라 Signature 헤더를 파싱하고 서명을 검증
+	 * HTTP Signature 검증 (landrok/activitypub 라이브러리 사용)
 	 *
 	 * @return bool
 	 */
 	protected function verifyHttpSignature()
 	{
-		$signature_header = $_SERVER['HTTP_SIGNATURE'] ?? '';
-		if (!$signature_header)
+		try
+		{
+			$server = $this->createActivityPubServer();
+			$httpSignature = new HttpSignature($server);
+
+			// Symfony Request에서 쿼리 스트링 정렬을 방지하기 위해
+			// ActivityPubRequest 서브클래스를 사용
+			$request = ActivityPubRequest::createFromGlobals();
+
+			return $httpSignature->verify($request);
+		}
+		catch (\Exception $e)
 		{
 			return false;
 		}
+	}
 
-		// Signature 헤더 파싱: keyId, headers, signature
-		$parts = [];
-		if (preg_match_all('/(\w+)="([^"]*)"/', $signature_header, $matches, PREG_SET_ORDER))
-		{
-			foreach ($matches as $match)
-			{
-				$parts[$match[1]] = $match[2];
-			}
-		}
+	/**
+	 * ActivityPhp Server 인스턴스 생성
+	 *
+	 * @return \ActivityPhp\Server
+	 */
+	protected function createActivityPubServer()
+	{
+		$domain = ActorModel::getSiteDomain();
+		$scheme = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+		$port = intval($_SERVER['SERVER_PORT'] ?? (($scheme === 'https') ? 443 : 80));
 
-		$key_id = $parts['keyId'] ?? '';
-		$headers_list = $parts['headers'] ?? 'date';
-		$signature_b64 = $parts['signature'] ?? '';
-
-		if (!$key_id || !$signature_b64)
-		{
-			return false;
-		}
-
-		// Date 헤더의 유효성 확인 (12시간 이내)
-		$date_header = $_SERVER['HTTP_DATE'] ?? '';
-		if ($date_header)
-		{
-			$request_time = strtotime($date_header);
-			if ($request_time === false || abs(time() - $request_time) > self::HTTP_SIGNATURE_MAX_AGE)
-			{
-				return false;
-			}
-		}
-
-		// 원격 Actor의 공개 키 가져오기
-		$actor_url = preg_replace('/#.*$/', '', $key_id);
-		$remote_actor = $this->fetchRemoteActor($actor_url);
-		if (!$remote_actor || empty($remote_actor['publicKey']['publicKeyPem']))
-		{
-			return false;
-		}
-
-		// keyId가 일치하는지 확인
-		$remote_key_id = $remote_actor['publicKey']['id'] ?? '';
-		if ($remote_key_id && $remote_key_id !== $key_id)
-		{
-			return false;
-		}
-
-		$public_key_pem = $remote_actor['publicKey']['publicKeyPem'];
-
-		// 서명 문자열 재구성
-		$headers = explode(' ', $headers_list);
-		$signing_parts = [];
-		foreach ($headers as $header_name)
-		{
-			$header_name = strtolower(trim($header_name));
-			if ($header_name === '(request-target)')
-			{
-				$method = strtolower($_SERVER['REQUEST_METHOD'] ?? 'get');
-				$path = $_SERVER['REQUEST_URI'] ?? '/';
-				$signing_parts[] = '(request-target): ' . $method . ' ' . $path;
-			}
-			elseif ($header_name === 'host')
-			{
-				$signing_parts[] = 'host: ' . ($_SERVER['HTTP_HOST'] ?? '');
-			}
-			elseif ($header_name === 'date')
-			{
-				$signing_parts[] = 'date: ' . ($date_header ?: '');
-			}
-			elseif ($header_name === 'digest')
-			{
-				$signing_parts[] = 'digest: ' . ($_SERVER['HTTP_DIGEST'] ?? '');
-			}
-			elseif ($header_name === 'content-type')
-			{
-				$signing_parts[] = 'content-type: ' . ($_SERVER['CONTENT_TYPE'] ?? $_SERVER['HTTP_CONTENT_TYPE'] ?? '');
-			}
-			else
-			{
-				$server_key = 'HTTP_' . strtoupper(str_replace('-', '_', $header_name));
-				$signing_parts[] = $header_name . ': ' . ($_SERVER[$server_key] ?? '');
-			}
-		}
-		$signing_string = implode("\n", $signing_parts);
-
-		// 서명 검증 (RSA-SHA256)
-		$decoded_signature = base64_decode($signature_b64);
-		if ($decoded_signature === false)
-		{
-			return false;
-		}
-
-		$public_key = openssl_pkey_get_public($public_key_pem);
-		if (!$public_key)
-		{
-			return false;
-		}
-
-		$result = openssl_verify($signing_string, $decoded_signature, $public_key, OPENSSL_ALGO_SHA256);
-		return $result === 1;
+		return new Server([
+			'instance' => [
+				'host' => $domain,
+				'port' => $port,
+				'debug' => false,
+			],
+			'logger' => [
+				'driver' => '\Psr\Log\NullLogger',
+			],
+			'cache' => [
+				'enabled' => false,
+			],
+		]);
 	}
 
 	/**
