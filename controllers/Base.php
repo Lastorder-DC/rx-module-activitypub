@@ -47,4 +47,63 @@ class Base extends \ModuleObject
 		$entry = '[' . $timestamp . '] ' . $message . "\n";
 		@file_put_contents($file, $entry, FILE_APPEND | LOCK_EX);
 	}
+
+	/**
+	 * HTML 컨텐츠에서 태그를 제거하고 설정된 최대 길이로 잘라내기
+	 *
+	 * @param string $html
+	 * @return string
+	 */
+	public static function truncateContent($html)
+	{
+		$maxLength = \Rhymix\Modules\Activitypub\Models\Config::getContentMaxLength();
+		$text = strip_tags($html);
+		if (mb_strlen($text) > $maxLength)
+		{
+			$text = mb_substr($text, 0, $maxLength - 3) . '...';
+		}
+		return $text;
+	}
+
+	/**
+	 * '작성자' 라벨 텍스트 반환 (다국어 지원)
+	 *
+	 * @return string
+	 */
+	public static function getAuthorLabel()
+	{
+		if (function_exists('lang'))
+		{
+			$label = lang('cmd_activitypub_author_prefix');
+			if ($label && $label !== 'cmd_activitypub_author_prefix')
+			{
+				return $label;
+			}
+		}
+		return '작성자';
+	}
+
+	/**
+	 * 허용되는 이미지 MIME 타입 목록
+	 */
+	protected static $allowedImageMimeTypes = [
+		'image/jpeg',
+		'image/png',
+		'image/gif',
+		'image/webp',
+		'image/svg+xml',
+		'image/bmp',
+		'image/tiff',
+	];
+
+	/**
+	 * 안전한 이미지 MIME 타입인지 확인
+	 *
+	 * @param string $mimeType
+	 * @return bool
+	 */
+	public static function isAllowedImageMimeType($mimeType)
+	{
+		return in_array($mimeType, self::$allowedImageMimeTypes, true);
+	}
 }

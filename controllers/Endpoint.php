@@ -378,7 +378,7 @@ class Endpoint extends Base
 		}
 
 		// 페이지별 게시물 가져오기
-		$list_count = 20;
+		$list_count = ConfigModel::getOutboxPageSize();
 		$documents_output = ActorModel::getDocumentsForActor($actor, $page, $list_count);
 		$total_items = intval($documents_output->total_count ?? 0);
 		$documents = $documents_output->data ?? [];
@@ -398,15 +398,16 @@ class Endpoint extends Base
 
 			$title = $doc->title ?? '';
 			$content = $doc->content ?? '';
+			$nick_name = $doc->nick_name ?? '';
 
-			// HTML을 평문으로 변환
-			$content_text = strip_tags($content);
-			if (mb_strlen($content_text) > 500)
+			$content_text = self::truncateContent($content);
+
+			$html_content = '<p><strong>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</strong>';
+			if ($nick_name && ($actor->actor_type ?? 'board') === 'board')
 			{
-				$content_text = mb_substr($content_text, 0, 497) . '...';
+				$html_content .= '<br /><strong>' . self::getAuthorLabel() . ': ' . htmlspecialchars($nick_name, ENT_QUOTES, 'UTF-8') . '</strong>';
 			}
-
-			$html_content = '<p><strong>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</strong></p>';
+			$html_content .= '</p>';
 			$html_content .= '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
 			$html_content .= '<p><a href="' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
 
@@ -583,9 +584,15 @@ class Endpoint extends Base
 		$document_url = $site_url . '?mid=' . urlencode($mid) . '&document_srl=' . $document_srl;
 
 		$title = $oDocument->title ?? '';
-		$content_text = $this->truncateContent($oDocument->content ?? '');
+		$nick_name = $oDocument->nick_name ?? '';
+		$content_text = self::truncateContent($oDocument->content ?? '');
 
-		$html_content = '<p><strong>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</strong></p>';
+		$html_content = '<p><strong>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</strong>';
+		if ($nick_name && ($actor->actor_type ?? 'board') === 'board')
+		{
+			$html_content .= '<br /><strong>' . self::getAuthorLabel() . ': ' . htmlspecialchars($nick_name, ENT_QUOTES, 'UTF-8') . '</strong>';
+		}
+		$html_content .= '</p>';
 		$html_content .= '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
 		$html_content .= '<p><a href="' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
 
@@ -645,7 +652,7 @@ class Endpoint extends Base
 		$document_url = $site_url . '?mid=' . urlencode($mid) . '&document_srl=' . $document_srl;
 		$comment_url = $document_url . '#comment_' . $comment_srl;
 
-		$content_text = $this->truncateContent($comment->content ?? '');
+		$content_text = self::truncateContent($comment->content ?? '');
 
 		$html_content = '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
 		$html_content .= '<p><a href="' . htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
@@ -701,22 +708,6 @@ class Endpoint extends Base
 			'to' => $to,
 			'cc' => $cc,
 		], $extra);
-	}
-
-	/**
-	 * HTML 컨텐츠에서 태그를 제거하고 500자로 잘라내기
-	 *
-	 * @param string $html
-	 * @return string
-	 */
-	protected function truncateContent($html)
-	{
-		$text = strip_tags($html);
-		if (mb_strlen($text) > 500)
-		{
-			$text = mb_substr($text, 0, 497) . '...';
-		}
-		return $text;
 	}
 
 	/**
@@ -1260,7 +1251,7 @@ class Endpoint extends Base
 		}
 		self::debugLog('fetchRemoteActor response (first 500 chars): ' . substr($response ?: '(empty)', 0, 500));
 
-		if ($http_code !== 200 || !$response)
+		if ($http_code < 200 || $http_code >= 300 || !$response)
 		{
 			self::debugLog('FAIL: fetchRemoteActor got HTTP ' . $http_code . ' or empty response');
 			return null;
@@ -1688,7 +1679,7 @@ class Endpoint extends Base
 
 		parse_str($query_string, $params);
 		$preferred_username = $params['preferred_username'] ?? '';
-		if (!$preferred_username)
+		if (!$preferred_username || !preg_match('/^[a-z0-9_]+$/', $preferred_username))
 		{
 			return null;
 		}

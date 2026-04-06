@@ -53,10 +53,10 @@
 			<label class="x_control-label">{{ $lang->cmd_activitypub_send_comments }}</label>
 			<div class="x_controls">
 				<label class="x_inline">
-					<input type="radio" name="send_comments" value="Y" @checked(($config->send_comments ?? 'Y') === 'Y') /> {{ $lang->cmd_yes }}
+					<input type="radio" name="send_comments" value="Y" @checked(($config->send_comments ?? 'N') === 'Y') /> {{ $lang->cmd_yes }}
 				</label>
 				<label class="x_inline">
-					<input type="radio" name="send_comments" value="N" @checked(($config->send_comments ?? 'Y') === 'N') /> {{ $lang->cmd_no }}
+					<input type="radio" name="send_comments" value="N" @checked(($config->send_comments ?? 'N') === 'N') /> {{ $lang->cmd_no }}
 				</label>
 				<p class="x_help-block">{{ $lang->cmd_activitypub_send_comments_desc }}</p>
 			</div>
@@ -72,6 +72,22 @@
 					<input type="radio" name="authorized_fetch" value="N" @checked(($config->authorized_fetch ?? 'N') === 'N') /> {{ $lang->cmd_no }}
 				</label>
 				<p class="x_help-block">{{ $lang->cmd_activitypub_authorized_fetch_desc }}</p>
+			</div>
+		</div>
+
+		<div class="x_control-group">
+			<label class="x_control-label">{{ $lang->cmd_activitypub_content_max_length }}</label>
+			<div class="x_controls">
+				<input type="number" name="content_max_length" value="{{ $config->content_max_length ?? 500 }}" min="100" max="5000" class="x_input-small" />
+				<p class="x_help-block">{{ $lang->cmd_activitypub_content_max_length_desc }}</p>
+			</div>
+		</div>
+
+		<div class="x_control-group">
+			<label class="x_control-label">{{ $lang->cmd_activitypub_outbox_page_size }}</label>
+			<div class="x_controls">
+				<input type="number" name="outbox_page_size" value="{{ $config->outbox_page_size ?? 20 }}" min="5" max="100" class="x_input-small" />
+				<p class="x_help-block">{{ $lang->cmd_activitypub_outbox_page_size_desc }}</p>
 			</div>
 		</div>
 	</section>
