@@ -18,6 +18,11 @@ use ModuleModel;
 class Endpoint extends Base
 {
 	/**
+	 * HTTP Signature 헤더 파싱 패턴 (draft-cavage-http-signatures-12 형식)
+	 */
+	public const SIGNATURE_HEADER_PATTERN = '/keyId="(?P<keyId>[^"]+)",\s*(algorithm="(?P<algorithm>[^"]+)",\s*)?(headers="(?P<headers>[^"]+)",\s*)?signature="(?P<signature>[^"]+)"/';
+
+	/**
 	 * 초기화
 	 */
 	public function init()
@@ -966,8 +971,7 @@ class Endpoint extends Base
 			}
 
 			// Signature 헤더 파싱 (draft-cavage-http-signatures-12 형식)
-			$pattern = '/keyId="(?P<keyId>[^"]+)",\s*(algorithm="(?P<algorithm>[^"]+)",\s*)?(headers="(?P<headers>[^"]+)",\s*)?signature="(?P<signature>[^"]+)"/';
-			if (!preg_match($pattern, $signatureHeader, $matches))
+			if (!preg_match(self::SIGNATURE_HEADER_PATTERN, $signatureHeader, $matches))
 			{
 				return false;
 			}
@@ -1035,7 +1039,15 @@ class Endpoint extends Base
 				return false;
 			}
 
-			return openssl_verify($signingString, $decodedSignature, $publicKey, OPENSSL_ALGO_SHA256) === 1;
+			$result = openssl_verify($signingString, $decodedSignature, $publicKey, OPENSSL_ALGO_SHA256) === 1;
+
+			// PHP 7.x 호환: 리소스 해제
+			if (PHP_MAJOR_VERSION < 8)
+			{
+				openssl_pkey_free($publicKey);
+			}
+
+			return $result;
 		}
 		catch (\Exception $e)
 		{
