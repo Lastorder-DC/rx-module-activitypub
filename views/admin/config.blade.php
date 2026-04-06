@@ -74,6 +74,22 @@
 				<p class="x_help-block">{{ $lang->cmd_activitypub_authorized_fetch_desc }}</p>
 			</div>
 		</div>
+
+		<div class="x_control-group">
+			<label class="x_control-label">{{ $lang->cmd_activitypub_content_max_length }}</label>
+			<div class="x_controls">
+				<input type="number" name="content_max_length" value="{{ $config->content_max_length ?? 500 }}" min="100" max="5000" class="x_input-small" />
+				<p class="x_help-block">{{ $lang->cmd_activitypub_content_max_length_desc }}</p>
+			</div>
+		</div>
+
+		<div class="x_control-group">
+			<label class="x_control-label">{{ $lang->cmd_activitypub_outbox_page_size }}</label>
+			<div class="x_controls">
+				<input type="number" name="outbox_page_size" value="{{ $config->outbox_page_size ?? 20 }}" min="5" max="100" class="x_input-small" />
+				<p class="x_help-block">{{ $lang->cmd_activitypub_outbox_page_size_desc }}</p>
+			</div>
+		</div>
 	</section>
 
 	<div class="btnArea x_clearfix">

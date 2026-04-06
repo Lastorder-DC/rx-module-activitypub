@@ -47,4 +47,21 @@ class Base extends \ModuleObject
 		$entry = '[' . $timestamp . '] ' . $message . "\n";
 		@file_put_contents($file, $entry, FILE_APPEND | LOCK_EX);
 	}
+
+	/**
+	 * HTML 컨텐츠에서 태그를 제거하고 설정된 최대 길이로 잘라내기
+	 *
+	 * @param string $html
+	 * @return string
+	 */
+	public static function truncateContent($html)
+	{
+		$maxLength = \Rhymix\Modules\Activitypub\Models\Config::getContentMaxLength();
+		$text = strip_tags($html);
+		if (mb_strlen($text) > $maxLength)
+		{
+			$text = mb_substr($text, 0, $maxLength - 3) . '...';
+		}
+		return $text;
+	}
 }

@@ -92,6 +92,7 @@ class EventHandlers extends Base
 				$args->module_srl = $obj->module_srl;
 				$args->title = $obj->title ?? '';
 				$args->content = $obj->content ?? '';
+				$args->nick_name = $obj->nick_name ?? '';
 
 				\Rhymix\Framework\Queue::addTask(
 					'Rhymix\\Modules\\Activitypub\\Controllers\\EventHandlers::processDocumentDeliveryTask',
@@ -261,6 +262,7 @@ class EventHandlers extends Base
 				$args->module_srl = $module_srl;
 				$args->title = $obj->title ?? '';
 				$args->content = $obj->content ?? '';
+				$args->nick_name = $obj->nick_name ?? '';
 				$args->activity_type = 'Update';
 
 				\Rhymix\Framework\Queue::addTask(
@@ -591,6 +593,7 @@ class EventHandlers extends Base
 		if (!$resource)
 		{
 			http_response_code(400);
+			header('Content-Type: application/json; charset=utf-8');
 			echo json_encode(['error' => 'Missing resource parameter']);
 			exit;
 		}
@@ -599,6 +602,7 @@ class EventHandlers extends Base
 		if (strpos($resource, 'acct:') !== 0)
 		{
 			http_response_code(400);
+			header('Content-Type: application/json; charset=utf-8');
 			echo json_encode(['error' => 'Invalid resource format']);
 			exit;
 		}
@@ -608,6 +612,7 @@ class EventHandlers extends Base
 		if (count($parts) !== 2)
 		{
 			http_response_code(400);
+			header('Content-Type: application/json; charset=utf-8');
 			echo json_encode(['error' => 'Invalid account format']);
 			exit;
 		}
@@ -620,6 +625,7 @@ class EventHandlers extends Base
 		if ($domain !== $site_domain)
 		{
 			http_response_code(404);
+			header('Content-Type: application/json; charset=utf-8');
 			echo json_encode(['error' => 'Unknown domain']);
 			exit;
 		}
@@ -629,6 +635,7 @@ class EventHandlers extends Base
 		if (!$actor)
 		{
 			http_response_code(404);
+			header('Content-Type: application/json; charset=utf-8');
 			echo json_encode(['error' => 'Unknown user']);
 			exit;
 		}
@@ -703,7 +710,8 @@ class EventHandlers extends Base
 	}
 
 	/**
-	 * 게시물에 대한 썸네일 첨부 및 민감 표시 데이터 생성
+	 * 게시물에 대한 이미지 첨부 및 민감 표시 데이터 생성
+	 * 첨부파일 목록에서 커버 이미지(썸네일로 지정된 원본 이미지)를 찾아 첨부
 	 *
 	 * @param object $actor
 	 * @param int $document_srl
@@ -724,23 +732,36 @@ class EventHandlers extends Base
 			return $result;
 		}
 
-		$thumbnailUrl = $oDocument->getThumbnail(0, 0, 'crop', true, 'jpg');
-		if (!$thumbnailUrl)
+		// 첨부파일 목록에서 커버 이미지(썸네일로 지정된 원본 이미지)를 찾기
+		$files = $oDocument->getUploadedFiles();
+		$coverFile = null;
+		if (!empty($files))
+		{
+			foreach ($files as $file)
+			{
+				if (!empty($file->cover_image))
+				{
+					$coverFile = $file;
+					break;
+				}
+			}
+		}
+
+		if (!$coverFile || empty($coverFile->uploaded_filename))
 		{
 			return $result;
 		}
 
-		// 상대 경로인 경우 사이트 URL 추가
-		if (strpos($thumbnailUrl, 'http') !== 0)
-		{
-			$site_url = ActorModel::getSiteUrl();
-			$thumbnailUrl = rtrim($site_url, '/') . '/' . ltrim($thumbnailUrl, '/');
-		}
+		// 원본 이미지 URL 생성
+		$relativePath = ltrim($coverFile->uploaded_filename, './');
+		$site_url = ActorModel::getSiteUrl();
+		$imageUrl = rtrim($site_url, '/') . '/' . $relativePath;
+		$mediaType = $coverFile->mime_type ?: 'image/jpeg';
 
 		$result['attachment'] = [[
 			'type' => 'Image',
-			'mediaType' => 'image/jpeg',
-			'url' => $thumbnailUrl,
+			'mediaType' => $mediaType,
+			'url' => $imageUrl,
 		]];
 
 		// 민감 이미지 확인
@@ -865,22 +886,22 @@ class EventHandlers extends Base
 		// 제목과 내용
 		$title = $document->title ?? '';
 		$content = $document->content ?? '';
+		$nick_name = $document->nick_name ?? '';
 
-		// HTML을 평문으로 변환 (간단한 처리)
-		$content_text = strip_tags($content);
-		if (mb_strlen($content_text) > 500)
-		{
-			$content_text = mb_substr($content_text, 0, 497) . '...';
-		}
+		$content_text = self::truncateContent($content);
 
 		// HTML 컨텐츠 생성
-		$html_content = '<p><strong>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</strong></p>';
+		$html_content = '<p><strong>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</strong>';
+		if ($nick_name && ($actor->actor_type ?? 'board') === 'board')
+		{
+			$html_content .= '<br /><strong>작성자: ' . htmlspecialchars($nick_name, ENT_QUOTES, 'UTF-8') . '</strong>';
+		}
+		$html_content .= '</p>';
 		$html_content .= '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
 		$html_content .= '<p><a href="' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
 
 		$published = date('c');
 		$note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
-		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
 		$recipients = self::getVisibilityRecipients($actor);
 
 		$note_data = [
@@ -893,7 +914,7 @@ class EventHandlers extends Base
 			'cc' => $recipients['cc'],
 		];
 
-		// 썸네일 첨부 및 민감 표시
+		// 이미지 첨부 및 민감 표시
 		$thumbData = self::getThumbnailData($actor, $document_srl);
 		if ($thumbData['attachment'])
 		{
@@ -946,11 +967,7 @@ class EventHandlers extends Base
 
 		// 내용
 		$content = $comment->content ?? '';
-		$content_text = strip_tags($content);
-		if (mb_strlen($content_text) > 500)
-		{
-			$content_text = mb_substr($content_text, 0, 497) . '...';
-		}
+		$content_text = self::truncateContent($content);
 
 		$html_content = '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
 		$html_content .= '<p><a href="' . htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
@@ -958,7 +975,6 @@ class EventHandlers extends Base
 		$published = date('c');
 		$note_id = ActorModel::getCommentNoteUrl($actor->preferred_username, $comment_srl);
 		$parent_note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
-		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
 		$recipients = self::getVisibilityRecipients($actor);
 
 		$note = Type::create('Note', [
@@ -1008,20 +1024,21 @@ class EventHandlers extends Base
 
 		$title = $document->title ?? '';
 		$content = $document->content ?? '';
+		$nick_name = $document->nick_name ?? '';
 
-		$content_text = strip_tags($content);
-		if (mb_strlen($content_text) > 500)
+		$content_text = self::truncateContent($content);
+
+		$html_content = '<p><strong>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</strong>';
+		if ($nick_name && ($actor->actor_type ?? 'board') === 'board')
 		{
-			$content_text = mb_substr($content_text, 0, 497) . '...';
+			$html_content .= '<br /><strong>작성자: ' . htmlspecialchars($nick_name, ENT_QUOTES, 'UTF-8') . '</strong>';
 		}
-
-		$html_content = '<p><strong>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</strong></p>';
+		$html_content .= '</p>';
 		$html_content .= '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
 		$html_content .= '<p><a href="' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
 
 		$updated = date('c');
 		$note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
-		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
 		$recipients = self::getVisibilityRecipients($actor);
 
 		$note_data = [
@@ -1034,7 +1051,7 @@ class EventHandlers extends Base
 			'cc' => $recipients['cc'],
 		];
 
-		// 썸네일 첨부 및 민감 표시
+		// 이미지 첨부 및 민감 표시
 		$thumbData = self::getThumbnailData($actor, $document_srl);
 		if ($thumbData['attachment'])
 		{
@@ -1076,7 +1093,6 @@ class EventHandlers extends Base
 
 		$actor_url = ActorModel::getActorUrl($actor->preferred_username);
 		$note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
-		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
 		$recipients = self::getVisibilityRecipients($actor);
 
 		// Mastodon 스타일 Delete: object에 Tombstone 사용
@@ -1120,11 +1136,7 @@ class EventHandlers extends Base
 		$comment_url = $document_url . '#comment_' . $comment_srl;
 
 		$content = $comment->content ?? '';
-		$content_text = strip_tags($content);
-		if (mb_strlen($content_text) > 500)
-		{
-			$content_text = mb_substr($content_text, 0, 497) . '...';
-		}
+		$content_text = self::truncateContent($content);
 
 		$html_content = '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
 		$html_content .= '<p><a href="' . htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
@@ -1132,7 +1144,6 @@ class EventHandlers extends Base
 		$updated = date('c');
 		$note_id = ActorModel::getCommentNoteUrl($actor->preferred_username, $comment_srl);
 		$parent_note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
-		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
 		$recipients = self::getVisibilityRecipients($actor);
 
 		$note = Type::create('Note', [
@@ -1175,7 +1186,6 @@ class EventHandlers extends Base
 
 		$actor_url = ActorModel::getActorUrl($actor->preferred_username);
 		$note_id = ActorModel::getCommentNoteUrl($actor->preferred_username, $comment_srl);
-		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
 		$recipients = self::getVisibilityRecipients($actor);
 
 		$tombstone = Type::create('Tombstone', [
