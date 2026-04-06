@@ -650,14 +650,6 @@ class Actor
 	 */
 	public static function getSiteUrl()
 	{
-		// Context::getRequestUri()는 사이트의 기본 URL을 반환 (예: https://example.com/)
-		$request_uri = \Context::getRequestUri();
-		if ($request_uri)
-		{
-			return rtrim($request_uri, '/') . '/';
-		}
-
-		// Fallback
 		$scheme = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 		$domain = self::getSiteDomain();
 		return $scheme . '://' . $domain . '/';
