@@ -170,7 +170,7 @@ class Actor
 	 * @param string $icon_url
 	 * @return object
 	 */
-	public static function createBoardActor($module_srl, $preferred_username, $display_name = '', $summary = '', $icon_url = '')
+	public static function createBoardActor($module_srl, $preferred_username, $display_name = '', $summary = '', $icon_url = '', $hide_followers = 'N')
 	{
 		// 이미 존재하는지 확인
 		$existing = self::getBoardActorByModuleSrl($module_srl);
@@ -201,6 +201,7 @@ class Actor
 		$args->display_name = $display_name;
 		$args->summary = $summary;
 		$args->icon_url = $icon_url;
+		$args->hide_followers = $hide_followers;
 		$args->public_key = $keyPair['public'];
 		$args->private_key = $keyPair['private'];
 		$args->regdate = date('YmdHis');
@@ -225,7 +226,7 @@ class Actor
 	 * @param string $icon_url
 	 * @return object
 	 */
-	public static function createUserActor($member_srl, $preferred_username, $display_name = '', $summary = '', $icon_url = '')
+	public static function createUserActor($member_srl, $preferred_username, $display_name = '', $summary = '', $icon_url = '', $hide_followers = 'N')
 	{
 		// 이미 이 유저에 대한 Actor가 존재하는지 확인
 		$existing = self::getUserActorByMemberSrl($member_srl);
@@ -256,6 +257,7 @@ class Actor
 		$args->display_name = $display_name;
 		$args->summary = $summary;
 		$args->icon_url = $icon_url;
+		$args->hide_followers = $hide_followers;
 		$args->public_key = $keyPair['public'];
 		$args->private_key = $keyPair['private'];
 		$args->regdate = date('YmdHis');
@@ -291,13 +293,14 @@ class Actor
 	 * @param string $icon_url
 	 * @return object
 	 */
-	public static function updateActorProfile($actor_srl, $display_name, $summary, $icon_url)
+	public static function updateActorProfile($actor_srl, $display_name, $summary, $icon_url, $hide_followers = 'N')
 	{
 		$args = new \stdClass;
 		$args->actor_srl = $actor_srl;
 		$args->display_name = $display_name;
 		$args->summary = $summary;
 		$args->icon_url = $icon_url;
+		$args->hide_followers = $hide_followers;
 		return executeQuery('activitypub.updateActorProfile', $args);
 	}
 
@@ -329,6 +332,7 @@ class Actor
 		$args->icon_url = '';
 		$args->public_key = '';
 		$args->private_key = '';
+		$args->hide_followers = 'N';
 		$args->is_deleted = 'Y';
 		return executeQuery('activitypub.softDeleteActor', $args);
 	}

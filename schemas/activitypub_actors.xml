@@ -10,6 +10,7 @@
 	<column name="icon_url" type="varchar" size="500" />
 	<column name="public_key" type="bigtext" notnull="notnull" />
 	<column name="private_key" type="bigtext" notnull="notnull" />
+	<column name="hide_followers" type="char" size="1" default="N" notnull="notnull" />
 	<column name="is_deleted" type="char" size="1" default="N" notnull="notnull" index="idx_is_deleted" />
 	<column name="regdate" type="date" index="idx_regdate" />
 </table>

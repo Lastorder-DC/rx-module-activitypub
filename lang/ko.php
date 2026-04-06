@@ -44,3 +44,5 @@ $lang->msg_activitypub_member_not_found = '해당 member_srl의 회원을 찾을
 $lang->cmd_activitypub_deleted = '삭제됨';
 $lang->cmd_activitypub_authorized_fetch = 'Authorized Fetch (Secure Mode)';
 $lang->cmd_activitypub_authorized_fetch_desc = '활성화하면 ActivityPub 엔드포인트에 대한 모든 GET 요청에 HTTP Signature 검증을 요구합니다. 마스토돈의 Secure Mode에 대응하는 기능으로, 인증되지 않은 서버의 콘텐츠 접근을 차단합니다.';
+$lang->cmd_activitypub_hide_followers = '팔로워 목록 비공개';
+$lang->cmd_activitypub_hide_followers_desc = '활성화하면 이 Actor의 팔로워 목록이 외부에 공개되지 않습니다. 팔로워 수만 표시됩니다.';

@@ -44,3 +44,5 @@ $lang->msg_activitypub_member_not_found = 'Member with the specified member_srl 
 $lang->cmd_activitypub_deleted = 'Deleted';
 $lang->cmd_activitypub_authorized_fetch = 'Authorized Fetch (Secure Mode)';
 $lang->cmd_activitypub_authorized_fetch_desc = 'When enabled, all GET requests to ActivityPub endpoints require HTTP Signature verification. This corresponds to Mastodon\'s Secure Mode, blocking content access from unauthenticated servers.';
+$lang->cmd_activitypub_hide_followers = 'Hide Followers';
+$lang->cmd_activitypub_hide_followers_desc = 'When enabled, the follower list for this actor will not be publicly visible. Only the follower count will be shown.';

@@ -626,17 +626,34 @@ class Endpoint extends Base
 		// 팔로워 수 가져오기
 		$followers_output = ActorModel::getFollowers($actor->actor_srl);
 		$total_items = 0;
+		$follower_urls = [];
 		if ($followers_output->toBool() && !empty($followers_output->data))
 		{
 			$followers = is_array($followers_output->data) ? $followers_output->data : [$followers_output->data];
 			$total_items = count($followers);
+
+			// 팔로워 목록 비공개가 아닌 경우에만 URL 목록 포함
+			if (($actor->hide_followers ?? 'N') !== 'Y')
+			{
+				foreach ($followers as $follower)
+				{
+					$follower_urls[] = $follower->follower_actor_url;
+				}
+			}
 		}
 
-		$response = Type::create('OrderedCollection', [
+		$collection_data = [
 			'@context' => 'https://www.w3.org/ns/activitystreams',
 			'id' => $followers_url,
 			'totalItems' => $total_items,
-		]);
+		];
+
+		if (!empty($follower_urls))
+		{
+			$collection_data['orderedItems'] = $follower_urls;
+		}
+
+		$response = Type::create('OrderedCollection', $collection_data);
 
 		$this->sendActivityResponse($response);
 	}

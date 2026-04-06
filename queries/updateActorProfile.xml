@@ -7,6 +7,7 @@
 		<column name="display_name" var="display_name" />
 		<column name="summary" var="summary" />
 		<column name="icon_url" var="icon_url" />
+		<column name="hide_followers" var="hide_followers" />
 	</columns>
 	<conditions>
 		<condition operation="equal" column="actor_srl" var="actor_srl" filter="number" notnull="notnull" />

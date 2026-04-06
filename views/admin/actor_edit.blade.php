@@ -68,6 +68,19 @@
 			</div>
 		</div>
 
+		<div class="x_control-group">
+			<label class="x_control-label">{{ $lang->cmd_activitypub_hide_followers }}</label>
+			<div class="x_controls">
+				<label class="x_inline">
+					<input type="radio" name="hide_followers" value="Y" @checked(($actor->hide_followers ?? 'N') === 'Y') /> {{ $lang->cmd_yes }}
+				</label>
+				<label class="x_inline">
+					<input type="radio" name="hide_followers" value="N" @checked(($actor->hide_followers ?? 'N') === 'N') /> {{ $lang->cmd_no }}
+				</label>
+				<p class="x_help-block">{{ $lang->cmd_activitypub_hide_followers_desc }}</p>
+			</div>
+		</div>
+
 		@if (($actor->actor_type ?? 'board') === 'user')
 		<div class="x_control-group">
 			<label class="x_control-label" for="filter_mids">{{ $lang->cmd_activitypub_filter_mids }}</label>

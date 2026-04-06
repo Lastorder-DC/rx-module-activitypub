@@ -99,6 +99,19 @@
 				<p class="x_help-block">{{ $lang->cmd_activitypub_icon_url_desc }}</p>
 			</div>
 		</div>
+
+		<div class="x_control-group">
+			<label class="x_control-label">{{ $lang->cmd_activitypub_hide_followers }}</label>
+			<div class="x_controls">
+				<label class="x_inline">
+					<input type="radio" name="hide_followers" value="Y" /> {{ $lang->cmd_yes }}
+				</label>
+				<label class="x_inline">
+					<input type="radio" name="hide_followers" value="N" checked /> {{ $lang->cmd_no }}
+				</label>
+				<p class="x_help-block">{{ $lang->cmd_activitypub_hide_followers_desc }}</p>
+			</div>
+		</div>
 	</section>
 
 	<div class="btnArea x_clearfix">
