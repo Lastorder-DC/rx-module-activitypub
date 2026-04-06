@@ -96,23 +96,23 @@ class Endpoint extends Base
 	 */
 	public function dispActivitypubActor()
 	{
-		debugPrint('=== dispActivitypubActor START ===');
-		debugPrint('REQUEST_METHOD: ' . ($_SERVER['REQUEST_METHOD'] ?? '(none)'));
-		debugPrint('REQUEST_URI: ' . ($_SERVER['REQUEST_URI'] ?? '(none)'));
-		debugPrint('HTTP_ACCEPT: ' . ($_SERVER['HTTP_ACCEPT'] ?? '(none)'));
-		debugPrint('HTTP_SIGNATURE: ' . ($_SERVER['HTTP_SIGNATURE'] ?? '(none)'));
-		debugPrint('HTTP_SIGNATURE_INPUT: ' . ($_SERVER['HTTP_SIGNATURE_INPUT'] ?? '(none)'));
-		debugPrint('HTTP_HOST: ' . ($_SERVER['HTTP_HOST'] ?? '(none)'));
-		debugPrint('HTTP_DATE: ' . ($_SERVER['HTTP_DATE'] ?? '(none)'));
-		debugPrint('HTTP_USER_AGENT: ' . ($_SERVER['HTTP_USER_AGENT'] ?? '(none)'));
+		self::debugLog('=== dispActivitypubActor START ===');
+		self::debugLog('REQUEST_METHOD: ' . ($_SERVER['REQUEST_METHOD'] ?? '(none)'));
+		self::debugLog('REQUEST_URI: ' . ($_SERVER['REQUEST_URI'] ?? '(none)'));
+		self::debugLog('HTTP_ACCEPT: ' . ($_SERVER['HTTP_ACCEPT'] ?? '(none)'));
+		self::debugLog('HTTP_SIGNATURE: ' . ($_SERVER['HTTP_SIGNATURE'] ?? '(none)'));
+		self::debugLog('HTTP_SIGNATURE_INPUT: ' . ($_SERVER['HTTP_SIGNATURE_INPUT'] ?? '(none)'));
+		self::debugLog('HTTP_HOST: ' . ($_SERVER['HTTP_HOST'] ?? '(none)'));
+		self::debugLog('HTTP_DATE: ' . ($_SERVER['HTTP_DATE'] ?? '(none)'));
+		self::debugLog('HTTP_USER_AGENT: ' . ($_SERVER['HTTP_USER_AGENT'] ?? '(none)'));
 
 		// Authorized Fetch 모드일 경우 HTTP Signature 검증
 		if (!$this->checkAuthorizedFetch())
 		{
-			debugPrint('checkAuthorizedFetch() FAILED - returning 401');
+			self::debugLog('checkAuthorizedFetch() FAILED - returning 401');
 			return;
 		}
-		debugPrint('checkAuthorizedFetch() PASSED');
+		self::debugLog('checkAuthorizedFetch() PASSED');
 
 		$preferred_username = Context::get('preferred_username');
 		if (!$preferred_username)
@@ -610,8 +610,8 @@ class Endpoint extends Base
 	 */
 	protected function fetchRemoteActor($url)
 	{
-		debugPrint('--- fetchRemoteActor START ---');
-		debugPrint('Fetching URL: ' . $url);
+		self::debugLog('--- fetchRemoteActor START ---');
+		self::debugLog('Fetching URL: ' . $url);
 
 		$ch = curl_init($url);
 		curl_setopt_array($ch, [
@@ -632,25 +632,25 @@ class Endpoint extends Base
 		$effective_url = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
 		curl_close($ch);
 
-		debugPrint('fetchRemoteActor HTTP code: ' . $http_code);
-		debugPrint('fetchRemoteActor effective URL: ' . $effective_url);
+		self::debugLog('fetchRemoteActor HTTP code: ' . $http_code);
+		self::debugLog('fetchRemoteActor effective URL: ' . $effective_url);
 		if ($curl_error)
 		{
-			debugPrint('fetchRemoteActor cURL error: ' . $curl_error);
+			self::debugLog('fetchRemoteActor cURL error: ' . $curl_error);
 		}
-		debugPrint('fetchRemoteActor response (first 500 chars): ' . substr($response ?: '(empty)', 0, 500));
+		self::debugLog('fetchRemoteActor response (first 500 chars): ' . substr($response ?: '(empty)', 0, 500));
 
 		if ($http_code !== 200 || !$response)
 		{
-			debugPrint('FAIL: fetchRemoteActor got HTTP ' . $http_code . ' or empty response');
+			self::debugLog('FAIL: fetchRemoteActor got HTTP ' . $http_code . ' or empty response');
 			return null;
 		}
 
 		$data = json_decode($response, true);
-		debugPrint('fetchRemoteActor json_decode result is_array: ' . (is_array($data) ? 'YES' : 'NO'));
+		self::debugLog('fetchRemoteActor json_decode result is_array: ' . (is_array($data) ? 'YES' : 'NO'));
 		if (is_array($data))
 		{
-			debugPrint('fetchRemoteActor response keys: ' . implode(', ', array_keys($data)));
+			self::debugLog('fetchRemoteActor response keys: ' . implode(', ', array_keys($data)));
 		}
 		return is_array($data) ? $data : null;
 	}
@@ -966,25 +966,25 @@ class Endpoint extends Base
 	 */
 	protected function checkAuthorizedFetch()
 	{
-		debugPrint('--- checkAuthorizedFetch START ---');
+		self::debugLog('--- checkAuthorizedFetch START ---');
 		$config = ConfigModel::getConfig();
 		$authorizedFetchSetting = $config->authorized_fetch ?? 'N';
-		debugPrint('authorized_fetch config value: ' . $authorizedFetchSetting);
+		self::debugLog('authorized_fetch config value: ' . $authorizedFetchSetting);
 		if ($authorizedFetchSetting !== 'Y')
 		{
-			debugPrint('Authorized fetch is DISABLED - allowing request');
+			self::debugLog('Authorized fetch is DISABLED - allowing request');
 			return true;
 		}
 
-		debugPrint('Authorized fetch is ENABLED - verifying signature...');
+		self::debugLog('Authorized fetch is ENABLED - verifying signature...');
 		if (!$this->verifyHttpSignature())
 		{
-			debugPrint('verifyHttpSignature() returned FALSE - sending 401');
+			self::debugLog('verifyHttpSignature() returned FALSE - sending 401');
 			$this->sendJsonResponse(['error' => 'Request not signed or signature verification failed'], 401);
 			return false;
 		}
 
-		debugPrint('verifyHttpSignature() returned TRUE - request authorized');
+		self::debugLog('verifyHttpSignature() returned TRUE - request authorized');
 		return true;
 	}
 
@@ -999,24 +999,24 @@ class Endpoint extends Base
 	 */
 	protected function verifyHttpSignature()
 	{
-		debugPrint('--- verifyHttpSignature START ---');
+		self::debugLog('--- verifyHttpSignature START ---');
 		try
 		{
 			// Signature 헤더 읽기
 			$signatureHeader = $_SERVER['HTTP_SIGNATURE'] ?? '';
-			debugPrint('Raw HTTP_SIGNATURE header: ' . ($signatureHeader ?: '(empty)'));
+			self::debugLog('Raw HTTP_SIGNATURE header: ' . ($signatureHeader ?: '(empty)'));
 			if (!$signatureHeader)
 			{
-				debugPrint('FAIL: No Signature header found');
+				self::debugLog('FAIL: No Signature header found');
 				return false;
 			}
 
 			// Signature 헤더 파싱 (draft-cavage-http-signatures-12 형식)
-			debugPrint('Attempting regex match with pattern: ' . self::SIGNATURE_HEADER_PATTERN);
+			self::debugLog('Attempting regex match with pattern: ' . self::SIGNATURE_HEADER_PATTERN);
 			if (!preg_match(self::SIGNATURE_HEADER_PATTERN, $signatureHeader, $matches))
 			{
-				debugPrint('FAIL: Signature header does not match expected pattern');
-				debugPrint('preg_last_error: ' . preg_last_error());
+				self::debugLog('FAIL: Signature header does not match expected pattern');
+				self::debugLog('preg_last_error: ' . preg_last_error());
 				return false;
 			}
 
@@ -1024,46 +1024,46 @@ class Endpoint extends Base
 			$headers = $matches['headers'] ?? 'date';
 			$signatureValue = $matches['signature'] ?? '';
 
-			debugPrint('Parsed keyId: ' . $keyId);
-			debugPrint('Parsed headers: ' . $headers);
-			debugPrint('Parsed signature (first 60 chars): ' . substr($signatureValue, 0, 60) . '...');
+			self::debugLog('Parsed keyId: ' . $keyId);
+			self::debugLog('Parsed headers: ' . $headers);
+			self::debugLog('Parsed signature (first 60 chars): ' . substr($signatureValue, 0, 60) . '...');
 
 			if (!$keyId || !$signatureValue)
 			{
-				debugPrint('FAIL: keyId or signature is empty');
+				self::debugLog('FAIL: keyId or signature is empty');
 				return false;
 			}
 
 			// keyId에서 Actor URL 추출 (fragment 제거)
 			$actorUrl = preg_replace('/#.*$/', '', $keyId);
-			debugPrint('Actor URL (fragment removed): ' . $actorUrl);
+			self::debugLog('Actor URL (fragment removed): ' . $actorUrl);
 
 			// 원격 Actor의 공개키 조회
-			debugPrint('Fetching remote actor from: ' . $actorUrl);
+			self::debugLog('Fetching remote actor from: ' . $actorUrl);
 			$remoteActor = $this->fetchRemoteActor($actorUrl);
 			if (!$remoteActor || !isset($remoteActor['publicKey']['publicKeyPem']))
 			{
-				debugPrint('FAIL: Could not fetch remote actor or publicKey not found');
-				debugPrint('remoteActor is null: ' . ($remoteActor === null ? 'YES' : 'NO'));
+				self::debugLog('FAIL: Could not fetch remote actor or publicKey not found');
+				self::debugLog('remoteActor is null: ' . ($remoteActor === null ? 'YES' : 'NO'));
 				if ($remoteActor)
 				{
-					debugPrint('remoteActor keys: ' . implode(', ', array_keys($remoteActor)));
-					debugPrint('has publicKey: ' . (isset($remoteActor['publicKey']) ? 'YES' : 'NO'));
+					self::debugLog('remoteActor keys: ' . implode(', ', array_keys($remoteActor)));
+					self::debugLog('has publicKey: ' . (isset($remoteActor['publicKey']) ? 'YES' : 'NO'));
 					if (isset($remoteActor['publicKey']))
 					{
-						debugPrint('publicKey content: ' . json_encode($remoteActor['publicKey']));
+						self::debugLog('publicKey content: ' . json_encode($remoteActor['publicKey']));
 					}
 				}
 				return false;
 			}
 
 			$publicKeyPem = $remoteActor['publicKey']['publicKeyPem'];
-			debugPrint('Got publicKeyPem (first 80 chars): ' . substr($publicKeyPem, 0, 80) . '...');
+			self::debugLog('Got publicKeyPem (first 80 chars): ' . substr($publicKeyPem, 0, 80) . '...');
 
 			// 서명 문자열 재구성
 			$headerList = explode(' ', $headers);
 			$signingParts = [];
-			debugPrint('Header list to sign: ' . json_encode($headerList));
+			self::debugLog('Header list to sign: ' . json_encode($headerList));
 
 			foreach ($headerList as $headerName)
 			{
@@ -1072,56 +1072,56 @@ class Endpoint extends Base
 					$method = strtolower($_SERVER['REQUEST_METHOD'] ?? 'GET');
 					$requestUri = $_SERVER['REQUEST_URI'] ?? '/';
 					$signingParts[] = '(request-target): ' . $method . ' ' . $requestUri;
-					debugPrint('Signing part (request-target): ' . $method . ' ' . $requestUri);
+					self::debugLog('Signing part (request-target): ' . $method . ' ' . $requestUri);
 				}
 				elseif ($headerName === 'host')
 				{
 					$host = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? '';
 					$signingParts[] = 'host: ' . $host;
-					debugPrint('Signing part host: ' . $host);
+					self::debugLog('Signing part host: ' . $host);
 				}
 				else
 				{
 					$serverKey = 'HTTP_' . strtoupper(str_replace('-', '_', $headerName));
-					debugPrint('Looking for header "' . $headerName . '" as $_SERVER["' . $serverKey . '"]');
+					self::debugLog('Looking for header "' . $headerName . '" as $_SERVER["' . $serverKey . '"]');
 					if (isset($_SERVER[$serverKey]))
 					{
 						$signingParts[] = $headerName . ': ' . $_SERVER[$serverKey];
-						debugPrint('Signing part ' . $headerName . ': ' . $_SERVER[$serverKey]);
+						self::debugLog('Signing part ' . $headerName . ': ' . $_SERVER[$serverKey]);
 					}
 					else
 					{
-						debugPrint('WARNING: Header "' . $headerName . '" ($_SERVER["' . $serverKey . '"]) NOT FOUND in $_SERVER');
+						self::debugLog('WARNING: Header "' . $headerName . '" ($_SERVER["' . $serverKey . '"]) NOT FOUND in $_SERVER');
 					}
 				}
 			}
 
 			$signingString = implode("\n", $signingParts);
-			debugPrint('Final signing string (repr): ' . json_encode($signingString));
+			self::debugLog('Final signing string (repr): ' . json_encode($signingString));
 
 			// 서명 검증
 			$publicKey = openssl_pkey_get_public($publicKeyPem);
 			if (!$publicKey)
 			{
-				debugPrint('FAIL: openssl_pkey_get_public() returned false');
-				debugPrint('OpenSSL error: ' . openssl_error_string());
+				self::debugLog('FAIL: openssl_pkey_get_public() returned false');
+				self::debugLog('OpenSSL error: ' . openssl_error_string());
 				return false;
 			}
-			debugPrint('Public key loaded successfully');
+			self::debugLog('Public key loaded successfully');
 
 			$decodedSignature = base64_decode($signatureValue, true);
 			if ($decodedSignature === false)
 			{
-				debugPrint('FAIL: base64_decode of signature failed');
+				self::debugLog('FAIL: base64_decode of signature failed');
 				return false;
 			}
-			debugPrint('Decoded signature length: ' . strlen($decodedSignature) . ' bytes');
+			self::debugLog('Decoded signature length: ' . strlen($decodedSignature) . ' bytes');
 
 			$verifyResult = openssl_verify($signingString, $decodedSignature, $publicKey, OPENSSL_ALGO_SHA256);
-			debugPrint('openssl_verify() result: ' . $verifyResult . ' (1=success, 0=fail, -1=error)');
+			self::debugLog('openssl_verify() result: ' . $verifyResult . ' (1=success, 0=fail, -1=error)');
 			if ($verifyResult !== 1)
 			{
-				debugPrint('OpenSSL error (if any): ' . openssl_error_string());
+				self::debugLog('OpenSSL error (if any): ' . openssl_error_string());
 			}
 			$result = $verifyResult === 1;
 
@@ -1131,13 +1131,13 @@ class Endpoint extends Base
 				openssl_pkey_free($publicKey);
 			}
 
-			debugPrint('verifyHttpSignature returning: ' . ($result ? 'TRUE' : 'FALSE'));
+			self::debugLog('verifyHttpSignature returning: ' . ($result ? 'TRUE' : 'FALSE'));
 			return $result;
 		}
 		catch (\Exception $e)
 		{
-			debugPrint('EXCEPTION in verifyHttpSignature: ' . $e->getMessage());
-			debugPrint('Exception trace: ' . $e->getTraceAsString());
+			self::debugLog('EXCEPTION in verifyHttpSignature: ' . $e->getMessage());
+			self::debugLog('Exception trace: ' . $e->getTraceAsString());
 			return false;
 		}
 	}
