@@ -52,7 +52,25 @@ class EventHandlers extends Base
 		// 각 Actor를 통해 팔로워에게 전송
 		foreach ($actors as $actor)
 		{
-			$this->deliverDocumentToFollowers($actor, $obj);
+			// 비동기 큐가 사용 가능한 경우 큐에 추가
+			if (self::isQueueAvailable())
+			{
+				$args = new \stdClass;
+				$args->actor_srl = $actor->actor_srl;
+				$args->document_srl = $obj->document_srl;
+				$args->module_srl = $obj->module_srl;
+				$args->title = $obj->title ?? '';
+				$args->content = $obj->content ?? '';
+
+				\Rhymix\Framework\Queue::addTask(
+					'Rhymix\\Modules\\Activitypub\\Controllers\\EventHandlers::processDocumentDeliveryTask',
+					$args
+				);
+			}
+			else
+			{
+				self::deliverDocumentToFollowers($actor, $obj);
+			}
 		}
 	}
 
@@ -105,7 +123,25 @@ class EventHandlers extends Base
 		// 각 Actor를 통해 팔로워에게 전송
 		foreach ($actors as $actor)
 		{
-			$this->deliverCommentToFollowers($actor, $obj);
+			// 비동기 큐가 사용 가능한 경우 큐에 추가
+			if (self::isQueueAvailable())
+			{
+				$args = new \stdClass;
+				$args->actor_srl = $actor->actor_srl;
+				$args->comment_srl = $obj->comment_srl;
+				$args->document_srl = $obj->document_srl;
+				$args->module_srl = $obj->module_srl;
+				$args->content = $obj->content ?? '';
+
+				\Rhymix\Framework\Queue::addTask(
+					'Rhymix\\Modules\\Activitypub\\Controllers\\EventHandlers::processCommentDeliveryTask',
+					$args
+				);
+			}
+			else
+			{
+				self::deliverCommentToFollowers($actor, $obj);
+			}
 		}
 	}
 
@@ -197,12 +233,69 @@ class EventHandlers extends Base
 	}
 
 	/**
+	 * 비동기 큐 사용 가능 여부 확인
+	 *
+	 * @return bool
+	 */
+	protected static function isQueueAvailable()
+	{
+		return class_exists('Rhymix\\Framework\\Queue')
+			&& function_exists('config')
+			&& config('queue.enabled')
+			&& !defined('RXQUEUE_CRON');
+	}
+
+	/**
+	 * 게시물 배달 큐 태스크 핸들러
+	 *
+	 * @param object $args
+	 * @param object|null $options
+	 */
+	public static function processDocumentDeliveryTask($args, $options = null)
+	{
+		if (!$args || !isset($args->actor_srl) || !isset($args->document_srl))
+		{
+			return;
+		}
+
+		$actor = ActorModel::getActor($args->actor_srl);
+		if (!$actor)
+		{
+			return;
+		}
+
+		self::deliverDocumentToFollowers($actor, $args);
+	}
+
+	/**
+	 * 댓글 배달 큐 태스크 핸들러
+	 *
+	 * @param object $args
+	 * @param object|null $options
+	 */
+	public static function processCommentDeliveryTask($args, $options = null)
+	{
+		if (!$args || !isset($args->actor_srl) || !isset($args->comment_srl))
+		{
+			return;
+		}
+
+		$actor = ActorModel::getActor($args->actor_srl);
+		if (!$actor)
+		{
+			return;
+		}
+
+		self::deliverCommentToFollowers($actor, $args);
+	}
+
+	/**
 	 * 게시물을 팔로워에게 배달
 	 *
 	 * @param object $actor
 	 * @param object $document
 	 */
-	protected function deliverDocumentToFollowers($actor, $document)
+	protected static function deliverDocumentToFollowers($actor, $document)
 	{
 		TypeConfiguration::set('undefined_properties', 'include');
 
@@ -255,7 +348,7 @@ class EventHandlers extends Base
 		]);
 
 		// 팔로워에게 전송
-		$this->deliverToFollowers($actor, $activity);
+		self::deliverToFollowers($actor, $activity);
 	}
 
 	/**
@@ -264,7 +357,7 @@ class EventHandlers extends Base
 	 * @param object $actor
 	 * @param object $comment
 	 */
-	protected function deliverCommentToFollowers($actor, $comment)
+	protected static function deliverCommentToFollowers($actor, $comment)
 	{
 		TypeConfiguration::set('undefined_properties', 'include');
 
@@ -315,7 +408,7 @@ class EventHandlers extends Base
 			'object' => $note->toArray(),
 		]);
 
-		$this->deliverToFollowers($actor, $activity);
+		self::deliverToFollowers($actor, $activity);
 	}
 
 	/**
@@ -324,7 +417,7 @@ class EventHandlers extends Base
 	 * @param object $actor
 	 * @param \ActivityPhp\Type\AbstractObject $activity
 	 */
-	protected function deliverToFollowers($actor, $activity)
+	protected static function deliverToFollowers($actor, $activity)
 	{
 		$followers_output = ActorModel::getFollowers($actor->actor_srl);
 		if (!$followers_output->toBool() || empty($followers_output->data))
@@ -346,7 +439,7 @@ class EventHandlers extends Base
 			}
 			$delivered_inboxes[] = $inbox_url;
 
-			$this->sendSignedRequest($actor, $inbox_url, $body);
+			self::sendSignedRequest($actor, $inbox_url, $body);
 		}
 	}
 
@@ -358,7 +451,7 @@ class EventHandlers extends Base
 	 * @param string $body
 	 * @return bool
 	 */
-	protected function sendSignedRequest($actor, $url, $body)
+	protected static function sendSignedRequest($actor, $url, $body)
 	{
 		$parsed = parse_url($url);
 		if (!$parsed || !isset($parsed['host']))

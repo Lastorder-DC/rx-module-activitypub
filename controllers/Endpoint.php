@@ -4,8 +4,6 @@ namespace Rhymix\Modules\Activitypub\Controllers;
 
 use Rhymix\Modules\Activitypub\Models\Actor as ActorModel;
 use Rhymix\Modules\Activitypub\Models\Config as ConfigModel;
-use ActivityPhp\Server;
-use ActivityPhp\Server\Http\HttpSignature;
 use ActivityPhp\Type;
 use ActivityPhp\Type\TypeConfiguration;
 use Context;
@@ -19,6 +17,11 @@ use ModuleModel;
  */
 class Endpoint extends Base
 {
+	/**
+	 * HTTP Signature 헤더 파싱 패턴 (draft-cavage-http-signatures-12 형식)
+	 */
+	public const SIGNATURE_HEADER_PATTERN = '/keyId="(?P<keyId>[^"]+)",\s*(algorithm="(?P<algorithm>[^"]+)",\s*)?(headers="(?P<headers>[^"]+)",\s*)?signature="(?P<signature>[^"]+)"/';
+
 	/**
 	 * 초기화
 	 */
@@ -948,7 +951,11 @@ class Endpoint extends Base
 	}
 
 	/**
-	 * HTTP Signature 검증 (landrok/activitypub 라이브러리 사용)
+	 * HTTP Signature 검증 (draft-cavage-http-signatures-12 형식)
+	 *
+	 * landrok/activitypub 라이브러리의 서명 검증은 원격 Actor 공개키 조회 시
+	 * 서명 없는 HTTP 요청을 보내기 때문에, 원격 서버가 Authorized Fetch를 활성화한 경우
+	 * 공개키 조회에 실패합니다. 이를 해결하기 위해 자체 구현을 사용합니다.
 	 *
 	 * @return bool
 	 */
@@ -956,45 +963,96 @@ class Endpoint extends Base
 	{
 		try
 		{
-			$server = $this->createActivityPubServer();
-			$httpSignature = new HttpSignature($server);
+			// Signature 헤더 읽기
+			$signatureHeader = $_SERVER['HTTP_SIGNATURE'] ?? '';
+			if (!$signatureHeader)
+			{
+				return false;
+			}
 
-			// Symfony Request에서 쿼리 스트링 정렬을 방지하기 위해
-			// ActivityPubRequest 서브클래스를 사용
-			$request = ActivityPubRequest::createFromGlobals();
+			// Signature 헤더 파싱 (draft-cavage-http-signatures-12 형식)
+			if (!preg_match(self::SIGNATURE_HEADER_PATTERN, $signatureHeader, $matches))
+			{
+				return false;
+			}
 
-			return $httpSignature->verify($request);
+			$keyId = $matches['keyId'] ?? '';
+			$headers = $matches['headers'] ?? 'date';
+			$signatureValue = $matches['signature'] ?? '';
+
+			if (!$keyId || !$signatureValue)
+			{
+				return false;
+			}
+
+			// keyId에서 Actor URL 추출 (fragment 제거)
+			$actorUrl = preg_replace('/#.*$/', '', $keyId);
+
+			// 원격 Actor의 공개키 조회
+			$remoteActor = $this->fetchRemoteActor($actorUrl);
+			if (!$remoteActor || !isset($remoteActor['publicKey']['publicKeyPem']))
+			{
+				return false;
+			}
+
+			$publicKeyPem = $remoteActor['publicKey']['publicKeyPem'];
+
+			// 서명 문자열 재구성
+			$headerList = explode(' ', $headers);
+			$signingParts = [];
+
+			foreach ($headerList as $headerName)
+			{
+				if ($headerName === '(request-target)')
+				{
+					$method = strtolower($_SERVER['REQUEST_METHOD'] ?? 'GET');
+					$requestUri = $_SERVER['REQUEST_URI'] ?? '/';
+					$signingParts[] = '(request-target): ' . $method . ' ' . $requestUri;
+				}
+				elseif ($headerName === 'host')
+				{
+					$host = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? '';
+					$signingParts[] = 'host: ' . $host;
+				}
+				else
+				{
+					$serverKey = 'HTTP_' . strtoupper(str_replace('-', '_', $headerName));
+					if (isset($_SERVER[$serverKey]))
+					{
+						$signingParts[] = $headerName . ': ' . $_SERVER[$serverKey];
+					}
+				}
+			}
+
+			$signingString = implode("\n", $signingParts);
+
+			// 서명 검증
+			$publicKey = openssl_pkey_get_public($publicKeyPem);
+			if (!$publicKey)
+			{
+				return false;
+			}
+
+			$decodedSignature = base64_decode($signatureValue, true);
+			if ($decodedSignature === false)
+			{
+				return false;
+			}
+
+			$result = openssl_verify($signingString, $decodedSignature, $publicKey, OPENSSL_ALGO_SHA256) === 1;
+
+			// PHP 7.x 호환: 리소스 해제
+			if (PHP_MAJOR_VERSION < 8)
+			{
+				openssl_pkey_free($publicKey);
+			}
+
+			return $result;
 		}
 		catch (\Exception $e)
 		{
 			return false;
 		}
-	}
-
-	/**
-	 * ActivityPhp Server 인스턴스 생성
-	 *
-	 * @return \ActivityPhp\Server
-	 */
-	protected function createActivityPubServer()
-	{
-		$domain = ActorModel::getSiteDomain();
-		$scheme = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-		$port = intval($_SERVER['SERVER_PORT'] ?? (($scheme === 'https') ? 443 : 80));
-
-		return new Server([
-			'instance' => [
-				'host' => $domain,
-				'port' => $port,
-				'debug' => false,
-			],
-			'logger' => [
-				'driver' => '\Psr\Log\NullLogger',
-			],
-			'cache' => [
-				'enabled' => false,
-			],
-		]);
 	}
 
 	/**
