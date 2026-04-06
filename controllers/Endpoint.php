@@ -448,138 +448,166 @@ class Endpoint extends Base
 			return;
 		}
 
-		$actor_url = ActorModel::getActorUrl($actor->preferred_username);
-		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
-		$site_url = ActorModel::getSiteUrl();
-
 		$document_srl = intval(Context::get('document_srl'));
 		$comment_srl = intval(Context::get('comment_srl'));
 
-		// 댓글 Note
 		if ($comment_srl > 0)
 		{
-			$comment = \CommentModel::getComment($comment_srl);
-			if (!$comment || !$comment->comment_srl)
-			{
-				$this->sendJsonResponse(['error' => 'Not found'], 404);
-				return;
-			}
-
-			// 비밀 댓글 제외
-			if (($comment->is_secret ?? '') === 'Y')
-			{
-				$this->sendJsonResponse(['error' => 'Not found'], 404);
-				return;
-			}
-
-			// 비공개 게시판 게시물 제외
-			if (!ActorModel::isModulePubliclyAccessible($comment->module_srl))
-			{
-				$this->sendJsonResponse(['error' => 'Not found'], 404);
-				return;
-			}
-
-			$document_srl = $comment->document_srl;
-			$mid = ModuleModel::getMidByModuleSrl($comment->module_srl);
-			$document_url = $site_url . '?mid=' . urlencode($mid) . '&document_srl=' . $document_srl;
-			$comment_url = $document_url . '#comment_' . $comment_srl;
-
-			$content = $comment->content ?? '';
-			$content_text = strip_tags($content);
-			if (mb_strlen($content_text) > 500)
-			{
-				$content_text = mb_substr($content_text, 0, 497) . '...';
-			}
-
-			$html_content = '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
-			$html_content .= '<p><a href="' . htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
-
-			$note_id = ActorModel::getCommentNoteUrl($actor->preferred_username, $comment_srl);
-			$parent_note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
-			$published = self::formatRegdateToIso($comment->regdate ?? '');
-
-			$note = Type::create('Note', [
-				'@context' => 'https://www.w3.org/ns/activitystreams',
-				'id' => $note_id,
-				'published' => $published,
-				'attributedTo' => $actor_url,
-				'content' => $html_content,
-				'url' => $comment_url,
-				'inReplyTo' => $parent_note_id,
-				'to' => ['https://www.w3.org/ns/activitystreams#Public'],
-				'cc' => [$followers_url],
-			]);
-
-			$this->sendActivityResponse($note);
-			return;
+			$note_data = $this->buildCommentNoteData($actor, $comment_srl);
 		}
-
-		// 게시물 Note
-		if ($document_srl > 0)
+		elseif ($document_srl > 0)
 		{
-			$oDocument = \DocumentModel::getDocument($document_srl);
-			if (!$oDocument || !$oDocument->document_srl)
-			{
-				$this->sendJsonResponse(['error' => 'Not found'], 404);
-				return;
-			}
-
-			// 공개 글만 처리
-			$status = $oDocument->status ?? '';
-			if ($status !== 'PUBLIC' && $status !== '')
-			{
-				$this->sendJsonResponse(['error' => 'Not found'], 404);
-				return;
-			}
-
-			// 비공개 게시판 게시물 제외
-			if (!ActorModel::isModulePubliclyAccessible($oDocument->module_srl))
-			{
-				$this->sendJsonResponse(['error' => 'Not found'], 404);
-				return;
-			}
-
-			$mid = ModuleModel::getMidByModuleSrl($oDocument->module_srl);
-			$document_url = $site_url . '?mid=' . urlencode($mid) . '&document_srl=' . $document_srl;
-
-			$title = $oDocument->title ?? '';
-			$content = $oDocument->content ?? '';
-
-			$content_text = strip_tags($content);
-			if (mb_strlen($content_text) > 500)
-			{
-				$content_text = mb_substr($content_text, 0, 497) . '...';
-			}
-
-			$html_content = '<p><strong>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</strong></p>';
-			$html_content .= '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
-			$html_content .= '<p><a href="' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
-
-			$note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
-			$published = self::formatRegdateToIso($oDocument->regdate ?? '');
-
-			$note = Type::create('Note', [
-				'@context' => 'https://www.w3.org/ns/activitystreams',
-				'id' => $note_id,
-				'published' => $published,
-				'attributedTo' => $actor_url,
-				'content' => $html_content,
-				'url' => $document_url,
-				'to' => ['https://www.w3.org/ns/activitystreams#Public'],
-				'cc' => [$followers_url],
-			]);
-
-			// 수정일이 있고 등록일과 다르면 updated 필드 추가
-			if (!empty($oDocument->last_update) && ($oDocument->last_update ?? '') !== ($oDocument->regdate ?? ''))
-			{
-				$note->set('updated', self::formatRegdateToIso($oDocument->last_update));
-			}
-
-			$this->sendActivityResponse($note);
+			$note_data = $this->buildDocumentNoteData($actor, $document_srl);
+		}
+		else
+		{
+			$this->sendJsonResponse(['error' => 'Missing document_srl or comment_srl'], 400);
 			return;
 		}
 
-		$this->sendJsonResponse(['error' => 'Missing document_srl or comment_srl'], 400);
+		if (!$note_data)
+		{
+			$this->sendJsonResponse(['error' => 'Not found'], 404);
+			return;
+		}
+
+		$note = Type::create('Note', $note_data);
+		$this->sendActivityResponse($note);
+	}
+
+	/**
+	 * 게시물 Note 데이터 생성
+	 *
+	 * @param object $actor
+	 * @param int $document_srl
+	 * @return array|null Note 데이터 또는 접근 불가 시 null
+	 */
+	protected function buildDocumentNoteData($actor, $document_srl)
+	{
+		$oDocument = \DocumentModel::getDocument($document_srl);
+		if (!$oDocument || !$oDocument->document_srl)
+		{
+			return null;
+		}
+
+		// 공개 글만 처리
+		$status = $oDocument->status ?? '';
+		if ($status !== 'PUBLIC' && $status !== '')
+		{
+			return null;
+		}
+
+		// 비공개 게시판 제외
+		if (!ActorModel::isModulePubliclyAccessible($oDocument->module_srl))
+		{
+			return null;
+		}
+
+		$site_url = ActorModel::getSiteUrl();
+		$mid = ModuleModel::getMidByModuleSrl($oDocument->module_srl);
+		$document_url = $site_url . '?mid=' . urlencode($mid) . '&document_srl=' . $document_srl;
+
+		$title = $oDocument->title ?? '';
+		$content_text = $this->truncateContent($oDocument->content ?? '');
+
+		$html_content = '<p><strong>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</strong></p>';
+		$html_content .= '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
+		$html_content .= '<p><a href="' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
+
+		$note_data = $this->buildBaseNoteData($actor, [
+			'id' => ActorModel::getNoteUrl($actor->preferred_username, $document_srl),
+			'published' => self::formatRegdateToIso($oDocument->regdate ?? ''),
+			'content' => $html_content,
+			'url' => $document_url,
+		]);
+
+		// 수정일이 있고 등록일과 다르면 updated 필드 추가
+		if (!empty($oDocument->last_update) && ($oDocument->last_update ?? '') !== ($oDocument->regdate ?? ''))
+		{
+			$note_data['updated'] = self::formatRegdateToIso($oDocument->last_update);
+		}
+
+		return $note_data;
+	}
+
+	/**
+	 * 댓글 Note 데이터 생성
+	 *
+	 * @param object $actor
+	 * @param int $comment_srl
+	 * @return array|null Note 데이터 또는 접근 불가 시 null
+	 */
+	protected function buildCommentNoteData($actor, $comment_srl)
+	{
+		$comment = \CommentModel::getComment($comment_srl);
+		if (!$comment || !$comment->comment_srl)
+		{
+			return null;
+		}
+
+		// 비밀 댓글 제외
+		if (($comment->is_secret ?? '') === 'Y')
+		{
+			return null;
+		}
+
+		// 비공개 게시판 제외
+		if (!ActorModel::isModulePubliclyAccessible($comment->module_srl))
+		{
+			return null;
+		}
+
+		$site_url = ActorModel::getSiteUrl();
+		$document_srl = $comment->document_srl;
+		$mid = ModuleModel::getMidByModuleSrl($comment->module_srl);
+		$document_url = $site_url . '?mid=' . urlencode($mid) . '&document_srl=' . $document_srl;
+		$comment_url = $document_url . '#comment_' . $comment_srl;
+
+		$content_text = $this->truncateContent($comment->content ?? '');
+
+		$html_content = '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
+		$html_content .= '<p><a href="' . htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
+
+		return $this->buildBaseNoteData($actor, [
+			'id' => ActorModel::getCommentNoteUrl($actor->preferred_username, $comment_srl),
+			'published' => self::formatRegdateToIso($comment->regdate ?? ''),
+			'content' => $html_content,
+			'url' => $comment_url,
+			'inReplyTo' => ActorModel::getNoteUrl($actor->preferred_username, $document_srl),
+		]);
+	}
+
+	/**
+	 * Note 공통 데이터 생성
+	 *
+	 * @param object $actor
+	 * @param array $extra 개별 Note 필드 (id, published, content, url 등)
+	 * @return array
+	 */
+	protected function buildBaseNoteData($actor, array $extra)
+	{
+		return array_merge([
+			'@context' => 'https://www.w3.org/ns/activitystreams',
+			'attributedTo' => ActorModel::getActorUrl($actor->preferred_username),
+			'to' => ['https://www.w3.org/ns/activitystreams#Public'],
+			'cc' => [ActorModel::getFollowersUrl($actor->preferred_username)],
+		], $extra);
+	}
+
+	/**
+	 * HTML 컨텐츠에서 태그를 제거하고 500자로 잘라내기
+	 *
+	 * @param string $html
+	 * @return string
+	 */
+	protected function truncateContent($html)
+	{
+		$text = strip_tags($html);
+		if (mb_strlen($text) > 500)
+		{
+			$text = mb_substr($text, 0, 497) . '...';
+		}
+		return $text;
 	}
 
 	/**
