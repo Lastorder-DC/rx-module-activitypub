@@ -52,6 +52,9 @@ class EventHandlers extends Base
 		// 각 Actor를 통해 팔로워에게 전송
 		foreach ($actors as $actor)
 		{
+			// AP 활동 기록 추가
+			ActorModel::addActivity($actor->actor_srl, 'document', $obj->document_srl, $obj->module_srl, $member_srl);
+
 			// 비동기 큐가 사용 가능한 경우 큐에 추가
 			if (self::isQueueAvailable())
 			{
@@ -123,6 +126,9 @@ class EventHandlers extends Base
 		// 각 Actor를 통해 팔로워에게 전송
 		foreach ($actors as $actor)
 		{
+			// AP 활동 기록 추가
+			ActorModel::addActivity($actor->actor_srl, 'comment', $obj->comment_srl, $obj->module_srl, $member_srl);
+
 			// 비동기 큐가 사용 가능한 경우 큐에 추가
 			if (self::isQueueAvailable())
 			{
@@ -184,6 +190,9 @@ class EventHandlers extends Base
 		// 각 Actor를 통해 팔로워에게 Update 전송
 		foreach ($actors as $actor)
 		{
+			// 활동 기록이 없으면 추가 (기존 게시물 호환)
+			ActorModel::addActivity($actor->actor_srl, 'document', $obj->document_srl, $module_srl, $member_srl);
+
 			if (self::isQueueAvailable())
 			{
 				$args = new \stdClass;
@@ -232,67 +241,45 @@ class EventHandlers extends Base
 
 	/**
 	 * 게시물 Delete Activity 전송 공통 처리
+	 * activities 테이블에서 기록을 조회하여 Delete 전송
 	 *
 	 * @param object $obj
 	 */
 	protected function sendDeleteDocumentActivity($obj)
 	{
-		self::debugLog('[sendDeleteDocumentActivity] Called with document_srl=' . (isset($obj->document_srl) ? $obj->document_srl : 'null') . ', module_srl=' . (isset($obj->module_srl) ? $obj->module_srl : 'null') . ', member_srl=' . (isset($obj->member_srl) ? $obj->member_srl : 'null'));
-
 		if (!$obj || !isset($obj->document_srl))
 		{
-			self::debugLog('[sendDeleteDocumentActivity] No obj or document_srl, returning');
 			return;
 		}
 
-		// 트리거에 module_srl/member_srl이 없을 수 있으므로 DB에서 조회
 		$document_srl = $obj->document_srl;
-		$module_srl = $obj->module_srl ?? 0;
-		$member_srl = $obj->member_srl ?? 0;
 
-		self::debugLog('[sendDeleteDocumentActivity] document_srl=' . $document_srl . ', module_srl=' . $module_srl . ', member_srl=' . $member_srl);
-
-		if (!$module_srl || !$member_srl)
+		// activities 테이블에서 해당 게시물에 대한 활동 기록 조회
+		$activities = ActorModel::getActivitiesByObjectSrl('document', $document_srl);
+		if (empty($activities))
 		{
-			$oDocument = \DocumentModel::getDocument($document_srl);
-			if ($oDocument && $oDocument->document_srl)
-			{
-				$module_srl = $module_srl ?: intval($oDocument->module_srl);
-				$member_srl = $member_srl ?: intval($oDocument->member_srl);
-				self::debugLog('[sendDeleteDocumentActivity] After DB lookup: module_srl=' . $module_srl . ', member_srl=' . $member_srl);
-			}
-			else
-			{
-				self::debugLog('[sendDeleteDocumentActivity] DB lookup failed for document_srl=' . $document_srl);
-			}
-		}
-
-		if (!$module_srl)
-		{
-			self::debugLog('[sendDeleteDocumentActivity] No module_srl, returning');
+			// 활동 기록이 없으면 AP로 발송된 적 없으므로 삭제할 필요 없음
+			self::debugLog('[sendDeleteDocumentActivity] No activity records for document_srl=' . $document_srl . ', skipping');
 			return;
 		}
 
-		$actors = ActorModel::getActorsForDocument($module_srl, $member_srl);
-		if (empty($actors))
-		{
-			self::debugLog('[sendDeleteDocumentActivity] No actors found for module_srl=' . $module_srl . ', member_srl=' . $member_srl);
-			return;
-		}
+		self::debugLog('[sendDeleteDocumentActivity] Found ' . count($activities) . ' activity record(s) for document_srl=' . $document_srl);
 
-		self::debugLog('[sendDeleteDocumentActivity] Found ' . count($actors) . ' actor(s), queue_available=' . (self::isQueueAvailable() ? 'true' : 'false'));
-
-		foreach ($actors as $actor)
+		foreach ($activities as $activity)
 		{
+			$actor = ActorModel::getActor($activity->actor_srl);
+			if (!$actor)
+			{
+				continue;
+			}
+
 			if (self::isQueueAvailable())
 			{
 				$args = new \stdClass;
 				$args->actor_srl = $actor->actor_srl;
 				$args->document_srl = $document_srl;
-				$args->module_srl = $module_srl;
+				$args->module_srl = $activity->module_srl;
 				$args->activity_type = 'Delete';
-
-				self::debugLog('[sendDeleteDocumentActivity] Adding queue task for actor_srl=' . $actor->actor_srl . ', activity_type=Delete');
 
 				\Rhymix\Framework\Queue::addTask(
 					'Rhymix\\Modules\\Activitypub\\Controllers\\EventHandlers::processDocumentDeliveryTask',
@@ -301,10 +288,12 @@ class EventHandlers extends Base
 			}
 			else
 			{
-				self::debugLog('[sendDeleteDocumentActivity] Sending synchronously for actor_srl=' . $actor->actor_srl);
 				self::deliverDocumentDeleteToFollowers($actor, $document_srl);
 			}
 		}
+
+		// 활동 기록 삭제
+		ActorModel::deleteActivitiesByObjectSrl('document', $document_srl);
 	}
 
 	/**
@@ -368,6 +357,9 @@ class EventHandlers extends Base
 
 		foreach ($actors as $actor)
 		{
+			// 활동 기록이 없으면 추가 (기존 댓글 호환)
+			ActorModel::addActivity($actor->actor_srl, 'comment', $obj->comment_srl, $module_srl, $member_srl);
+
 			if (self::isQueueAvailable())
 			{
 				$args = new \stdClass;
@@ -414,6 +406,7 @@ class EventHandlers extends Base
 
 	/**
 	 * 댓글 Delete Activity 전송 공통 처리
+	 * activities 테이블에서 기록을 조회하여 Delete 전송
 	 *
 	 * @param object $obj
 	 */
@@ -432,38 +425,28 @@ class EventHandlers extends Base
 		}
 
 		$comment_srl = $obj->comment_srl;
-		$module_srl = $obj->module_srl ?? 0;
-		$member_srl = $obj->member_srl ?? 0;
 
-		if (!$module_srl || !$member_srl)
+		// activities 테이블에서 해당 댓글에 대한 활동 기록 조회
+		$activities = ActorModel::getActivitiesByObjectSrl('comment', $comment_srl);
+		if (empty($activities))
 		{
-			$comment = \CommentModel::getComment($comment_srl);
-			if ($comment && $comment->comment_srl)
+			return;
+		}
+
+		foreach ($activities as $activity)
+		{
+			$actor = ActorModel::getActor($activity->actor_srl);
+			if (!$actor)
 			{
-				$module_srl = $module_srl ?: intval($comment->module_srl);
-				$member_srl = $member_srl ?: intval($comment->member_srl);
+				continue;
 			}
-		}
 
-		if (!$module_srl)
-		{
-			return;
-		}
-
-		$actors = ActorModel::getActorsForDocument($module_srl, $member_srl);
-		if (empty($actors))
-		{
-			return;
-		}
-
-		foreach ($actors as $actor)
-		{
 			if (self::isQueueAvailable())
 			{
 				$args = new \stdClass;
 				$args->actor_srl = $actor->actor_srl;
 				$args->comment_srl = $comment_srl;
-				$args->module_srl = $module_srl;
+				$args->module_srl = $activity->module_srl;
 				$args->activity_type = 'Delete';
 
 				\Rhymix\Framework\Queue::addTask(
@@ -476,6 +459,9 @@ class EventHandlers extends Base
 				self::deliverCommentDeleteToFollowers($actor, $comment_srl);
 			}
 		}
+
+		// 활동 기록 삭제
+		ActorModel::deleteActivitiesByObjectSrl('comment', $comment_srl);
 	}
 
 	/**
