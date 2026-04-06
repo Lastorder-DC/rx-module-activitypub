@@ -1620,44 +1620,21 @@ class Endpoint extends Base
 
 			// 서명 문자열 재구성
 			$headerList = explode(' ', $headers);
-			$signingParts = [];
+			$method = strtolower($_SERVER['REQUEST_METHOD'] ?? 'GET');
+			$requestUri = $_SERVER['REQUEST_URI'] ?? '/';
+			$host = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? '';
 			self::debugLog('Header list to sign: ' . json_encode($headerList));
 
-			foreach ($headerList as $headerName)
+			// REQUEST_URI(path+query)와 path만 사용하는 두 가지 방식으로 서명 문자열 구성
+			// Mastodon은 path+query를 사용하고, Misskey는 path만 사용하여 서명
+			$requestTargetCandidates = [$requestUri];
+			$pathOnly = parse_url($requestUri, PHP_URL_PATH) ?: '/';
+			if ($pathOnly !== $requestUri)
 			{
-				if ($headerName === '(request-target)')
-				{
-					$method = strtolower($_SERVER['REQUEST_METHOD'] ?? 'GET');
-					$requestUri = $_SERVER['REQUEST_URI'] ?? '/';
-					$signingParts[] = '(request-target): ' . $method . ' ' . $requestUri;
-					self::debugLog('Signing part (request-target): ' . $method . ' ' . $requestUri);
-				}
-				elseif ($headerName === 'host')
-				{
-					$host = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? '';
-					$signingParts[] = 'host: ' . $host;
-					self::debugLog('Signing part host: ' . $host);
-				}
-				else
-				{
-					$serverKey = 'HTTP_' . strtoupper(str_replace('-', '_', $headerName));
-					self::debugLog('Looking for header "' . $headerName . '" as $_SERVER["' . $serverKey . '"]');
-					if (isset($_SERVER[$serverKey]))
-					{
-						$signingParts[] = $headerName . ': ' . $_SERVER[$serverKey];
-						self::debugLog('Signing part ' . $headerName . ': ' . $_SERVER[$serverKey]);
-					}
-					else
-					{
-						self::debugLog('WARNING: Header "' . $headerName . '" ($_SERVER["' . $serverKey . '"]) NOT FOUND in $_SERVER');
-					}
-				}
+				$requestTargetCandidates[] = $pathOnly;
 			}
 
-			$signingString = implode("\n", $signingParts);
-			self::debugLog('Final signing string (repr): ' . json_encode($signingString));
-
-			// 서명 검증
+			// 서명 검증 준비
 			$publicKey = openssl_pkey_get_public($publicKeyPem);
 			if (!$publicKey)
 			{
@@ -1675,13 +1652,55 @@ class Endpoint extends Base
 			}
 			self::debugLog('Decoded signature length: ' . strlen($decodedSignature) . ' bytes');
 
-			$verifyResult = openssl_verify($signingString, $decodedSignature, $publicKey, OPENSSL_ALGO_SHA256);
-			self::debugLog('openssl_verify() result: ' . $verifyResult . ' (1=success, 0=fail, -1=error)');
-			if ($verifyResult !== 1)
+			$result = false;
+			$lastCandidate = end($requestTargetCandidates);
+			foreach ($requestTargetCandidates as $candidateUri)
 			{
+				$signingParts = [];
+				foreach ($headerList as $headerName)
+				{
+					if ($headerName === '(request-target)')
+					{
+						$signingParts[] = '(request-target): ' . $method . ' ' . $candidateUri;
+						self::debugLog('Signing part (request-target): ' . $method . ' ' . $candidateUri);
+					}
+					elseif ($headerName === 'host')
+					{
+						$signingParts[] = 'host: ' . $host;
+						self::debugLog('Signing part host: ' . $host);
+					}
+					else
+					{
+						$serverKey = 'HTTP_' . strtoupper(str_replace('-', '_', $headerName));
+						self::debugLog('Looking for header "' . $headerName . '" as $_SERVER["' . $serverKey . '"]');
+						if (isset($_SERVER[$serverKey]))
+						{
+							$signingParts[] = $headerName . ': ' . $_SERVER[$serverKey];
+							self::debugLog('Signing part ' . $headerName . ': ' . $_SERVER[$serverKey]);
+						}
+						else
+						{
+							self::debugLog('WARNING: Header "' . $headerName . '" ($_SERVER["' . $serverKey . '"]) NOT FOUND in $_SERVER');
+						}
+					}
+				}
+
+				$signingString = implode("\n", $signingParts);
+				self::debugLog('Final signing string (repr): ' . json_encode($signingString));
+
+				$verifyResult = openssl_verify($signingString, $decodedSignature, $publicKey, OPENSSL_ALGO_SHA256);
+				self::debugLog('openssl_verify() result: ' . $verifyResult . ' (1=success, 0=fail, -1=error)');
+				if ($verifyResult === 1)
+				{
+					$result = true;
+					break;
+				}
 				self::debugLog('OpenSSL error (if any): ' . openssl_error_string());
+				if ($candidateUri !== $lastCandidate)
+				{
+					self::debugLog('Retrying with path-only request-target (Misskey compatibility)...');
+				}
 			}
-			$result = $verifyResult === 1;
 
 			// PHP 7.x 호환: 리소스 해제
 			if (PHP_MAJOR_VERSION < 8)
