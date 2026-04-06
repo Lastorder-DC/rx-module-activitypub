@@ -58,7 +58,7 @@ class Endpoint extends Base
 			return;
 		}
 
-		$actor = ActorModel::getActorByPreferredUsername($username);
+		$actor = ActorModel::getActiveActorByPreferredUsername($username);
 		if (!$actor)
 		{
 			$this->sendJsonResponse(['error' => 'Unknown user'], 404);
@@ -94,7 +94,7 @@ class Endpoint extends Base
 			return;
 		}
 
-		$actor = ActorModel::getActorByPreferredUsername($preferred_username);
+		$actor = ActorModel::getActiveActorByPreferredUsername($preferred_username);
 		if (!$actor)
 		{
 			$this->sendJsonResponse(['error' => 'Unknown user'], 404);
@@ -251,7 +251,7 @@ class Endpoint extends Base
 			return;
 		}
 
-		$actor = ActorModel::getActorByPreferredUsername($preferred_username);
+		$actor = ActorModel::getActiveActorByPreferredUsername($preferred_username);
 		if (!$actor)
 		{
 			$this->sendJsonResponse(['error' => 'Unknown user'], 404);
@@ -286,7 +286,7 @@ class Endpoint extends Base
 			return;
 		}
 
-		$actor = ActorModel::getActorByPreferredUsername($preferred_username);
+		$actor = ActorModel::getActiveActorByPreferredUsername($preferred_username);
 		if (!$actor)
 		{
 			$this->sendJsonResponse(['error' => 'Unknown user'], 404);

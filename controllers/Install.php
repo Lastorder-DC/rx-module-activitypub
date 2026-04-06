@@ -47,6 +47,12 @@ class Install extends Base
 			return true;
 		}
 
+		// is_deleted 컬럼이 없으면 업데이트 필요
+		if (!$oDB->isColumnExists('activitypub_actors', 'is_deleted'))
+		{
+			return true;
+		}
+
 		return false;
 	}
 
@@ -95,6 +101,13 @@ class Install extends Base
 		if (!$oDB->isTableExists('activitypub_actor_modules'))
 		{
 			$oDB->createTableByXmlFile($this->module_path . 'schemas/activitypub_actor_modules.xml');
+		}
+
+		// is_deleted 컬럼 추가
+		if (!$oDB->isColumnExists('activitypub_actors', 'is_deleted'))
+		{
+			$oDB->addColumn('activitypub_actors', 'is_deleted', 'char', 1, 'N', true, 'private_key');
+			$oDB->addIndex('activitypub_actors', 'idx_is_deleted', ['is_deleted']);
 		}
 
 		return new \BaseObject();

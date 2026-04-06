@@ -48,6 +48,13 @@ class Admin extends Base
 			{
 				$actor_type = $actor->actor_type ?? 'board';
 
+				// 삭제된 Actor는 추가 정보 부여 생략
+				if (($actor->is_deleted ?? 'N') === 'Y')
+				{
+					$actor->type_label = '-';
+					continue;
+				}
+
 				if ($actor_type === 'board' && $actor->module_srl)
 				{
 					$actor->mid = ModuleModel::getMidByModuleSrl($actor->module_srl);
@@ -215,7 +222,7 @@ class Admin extends Base
 		}
 
 		$actor = ActorModel::getActor($actor_srl);
-		if (!$actor)
+		if (!$actor || ($actor->is_deleted ?? 'N') === 'Y')
 		{
 			return new BaseObject(-1, 'msg_not_founded');
 		}
@@ -353,7 +360,7 @@ class Admin extends Base
 		}
 
 		$actor = ActorModel::getActor($actor_srl);
-		if (!$actor)
+		if (!$actor || ($actor->is_deleted ?? 'N') === 'Y')
 		{
 			return new BaseObject(-1, 'msg_not_founded');
 		}

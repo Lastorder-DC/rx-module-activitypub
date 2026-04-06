@@ -41,3 +41,4 @@ $lang->msg_activitypub_username_already_exists = '이미 같은 이름의 Activi
 $lang->msg_activitypub_key_generation_failed = 'RSA 키 쌍 생성에 실패했습니다.';
 $lang->msg_activitypub_module_not_found = '해당 mid의 모듈을 찾을 수 없습니다.';
 $lang->msg_activitypub_member_not_found = '해당 member_srl의 회원을 찾을 수 없습니다.';
+$lang->cmd_activitypub_deleted = '삭제됨';

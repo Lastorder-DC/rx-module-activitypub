@@ -72,7 +72,7 @@
 			<label class="x_control-label" for="preferred_username">{{ $lang->cmd_activitypub_actor_username }}</label>
 			<div class="x_controls">
 				<input type="text" name="preferred_username" id="preferred_username" placeholder="my_actor" style="width:200px;" required />
-				<span class="x_text-muted">@{{ $site_domain }}</span>
+				<span class="x_text-muted">{{ '@' . $site_domain }}</span>
 				<p class="x_help-block">{{ $lang->cmd_activitypub_username_desc }}</p>
 			</div>
 		</div>
