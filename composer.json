@@ -4,6 +4,7 @@
     "prepend-autoloader": false
   },
   "require": {
-    "rhymix/composer-stub": "dev-master"
+    "rhymix/composer-stub": "dev-master",
+    "landrok/activitypub": "^0.8"
   }
 }
