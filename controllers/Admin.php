@@ -4,6 +4,7 @@ namespace Rhymix\Modules\Activitypub\Controllers;
 
 use Rhymix\Modules\Activitypub\Models\Config as ConfigModel;
 use Rhymix\Modules\Activitypub\Models\Actor as ActorModel;
+use ActivityPhp\Type;
 use BaseObject;
 use Context;
 use MemberModel;
@@ -426,10 +427,38 @@ class Admin extends Base
 			return new BaseObject(-1, 'msg_invalid_request');
 		}
 
+		// 팔로워 정보를 삭제 전에 조회 (Reject 전송에 필요)
+		$follower = ActorModel::getFollowerByFollowerSrl($follower_srl);
+		$actor = ActorModel::getActor($actor_srl);
+
+		// 팔로워 DB에서 삭제
 		$output = ActorModel::removeFollowerByFollowerSrl($follower_srl);
 		if (!$output->toBool())
 		{
 			return $output;
+		}
+
+		// 상대방 서버에 Reject(Follow) 전송
+		if ($follower && $actor && !empty($follower->follower_inbox_url))
+		{
+			$actor_url = ActorModel::getActorUrl($actor->preferred_username);
+
+			$reject = Type::create('Reject', [
+				'@context' => 'https://www.w3.org/ns/activitystreams',
+				'id' => $actor_url . '/reject/' . time(),
+				'actor' => $actor_url,
+				'object' => [
+					'type' => 'Follow',
+					'actor' => $follower->follower_actor_url,
+					'object' => $actor_url,
+				],
+			]);
+
+			$body = $reject->toJson(JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+			$inbox_url = $follower->follower_inbox_url;
+
+			self::debugLog('[procActivitypubAdminDeleteFollower] Sending Reject to: ' . $inbox_url);
+			EventHandlers::sendSignedRequest($actor, $inbox_url, $body);
 		}
 
 		$this->setMessage('success_deleted');

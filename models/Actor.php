@@ -467,6 +467,24 @@ class Actor
 	}
 
 	/**
+	 * follower_srl로 팔로워 정보 가져오기
+	 *
+	 * @param int $follower_srl
+	 * @return object|null
+	 */
+	public static function getFollowerByFollowerSrl($follower_srl)
+	{
+		$args = new \stdClass;
+		$args->follower_srl = $follower_srl;
+		$output = executeQuery('activitypub.getFollowerByFollowerSrl', $args);
+		if (!$output->toBool() || !$output->data)
+		{
+			return null;
+		}
+		return $output->data;
+	}
+
+	/**
 	 * 특정 팔로워 가져오기
 	 *
 	 * @param int $actor_srl
