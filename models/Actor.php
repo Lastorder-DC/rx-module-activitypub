@@ -645,11 +645,20 @@ class Actor
 
 	/**
 	 * 사이트 기본 URL 가져오기
+	 * CLI/Queue 환경에서도 올바른 scheme을 반환하도록 Context::getRequestUri() 우선 사용
 	 *
 	 * @return string
 	 */
 	public static function getSiteUrl()
 	{
+		// Rhymix Context에서 사이트 URL 가져오기 (CLI/Queue 환경에서도 올바른 scheme 보장)
+		$request_uri = \Context::getRequestUri();
+		if ($request_uri && strpos($request_uri, 'http') === 0)
+		{
+			return rtrim($request_uri, '/') . '/';
+		}
+
+		// Fallback: $_SERVER에서 추출
 		$scheme = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 		$domain = self::getSiteDomain();
 		return $scheme . '://' . $domain . '/';
