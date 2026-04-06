@@ -430,6 +430,7 @@ class Endpoint extends Base
 	public function procActivitypubInbox()
 	{
 		$method = $_SERVER['REQUEST_METHOD'] ?? 'POST';
+		self::debugLog('--- procActivitypubInbox START (method: ' . $method . ') ---');
 
 		// GET 요청: Inbox 컬렉션 반환
 		if ($method === 'GET')
@@ -443,6 +444,7 @@ class Endpoint extends Base
 			$preferred_username = Context::get('preferred_username');
 			if (!$preferred_username)
 			{
+				self::debugLog('procActivitypubInbox GET: Missing username');
 				$this->sendJsonResponse(['error' => 'Missing username'], 400);
 				return;
 			}
@@ -450,6 +452,7 @@ class Endpoint extends Base
 			$actor = ActorModel::getActiveActorByPreferredUsername($preferred_username);
 			if (!$actor)
 			{
+				self::debugLog('procActivitypubInbox GET: Unknown user: ' . $preferred_username);
 				$this->sendJsonResponse(['error' => 'Unknown user'], 404);
 				return;
 			}
@@ -476,6 +479,7 @@ class Endpoint extends Base
 		}
 		if (!$preferred_username)
 		{
+			self::debugLog('procActivitypubInbox POST: Missing username');
 			$this->sendJsonResponse(['error' => 'Missing username'], 400);
 			return;
 		}
@@ -483,17 +487,23 @@ class Endpoint extends Base
 		$actor = ActorModel::getActiveActorByPreferredUsername($preferred_username);
 		if (!$actor)
 		{
+			self::debugLog('procActivitypubInbox POST: Unknown user: ' . $preferred_username);
 			$this->sendJsonResponse(['error' => 'Unknown user'], 404);
 			return;
 		}
+
+		self::debugLog('procActivitypubInbox POST: Actor found: ' . $actor->preferred_username . ' (actor_srl: ' . $actor->actor_srl . ')');
 
 		// POST body 읽기
 		$raw_body = file_get_contents('php://input');
 		if (!$raw_body)
 		{
+			self::debugLog('procActivitypubInbox POST: Empty body');
 			$this->sendJsonResponse(['error' => 'Empty body'], 400);
 			return;
 		}
+
+		self::debugLog('procActivitypubInbox POST body (first 500 chars): ' . substr($raw_body, 0, 500));
 
 		try
 		{
@@ -501,11 +511,13 @@ class Endpoint extends Base
 		}
 		catch (\Exception $e)
 		{
+			self::debugLog('procActivitypubInbox POST: Invalid JSON: ' . $e->getMessage());
 			$this->sendJsonResponse(['error' => 'Invalid JSON'], 400);
 			return;
 		}
 
 		$type = $payload->type;
+		self::debugLog('procActivitypubInbox POST: Activity type: ' . $type);
 
 		switch ($type)
 		{
@@ -518,6 +530,7 @@ class Endpoint extends Base
 				break;
 
 			default:
+				self::debugLog('procActivitypubInbox POST: Unhandled activity type: ' . $type);
 				$this->sendJsonResponse(['status' => 'accepted'], 202);
 				break;
 		}
@@ -531,26 +544,35 @@ class Endpoint extends Base
 	 */
 	protected function handleFollow($actor, $payload)
 	{
+		self::debugLog('--- handleFollow START ---');
+		self::debugLog('handleFollow: Local actor: ' . $actor->preferred_username . ' (actor_srl: ' . $actor->actor_srl . ')');
+
 		$follower_actor_url = $payload->actor;
+		self::debugLog('handleFollow: Follower actor URL: ' . ($follower_actor_url ?: '(empty)'));
 		if (!$follower_actor_url || !filter_var($follower_actor_url, FILTER_VALIDATE_URL))
 		{
+			self::debugLog('handleFollow: FAIL - Invalid actor URL');
 			$this->sendJsonResponse(['error' => 'Invalid actor'], 400);
 			return;
 		}
 
-		// 원격 Actor 정보 가져오기
-		$remote_actor = $this->fetchRemoteActor($follower_actor_url);
+		// 원격 Actor 정보 가져오기 (서명된 요청으로 조회)
+		$remote_actor = $this->fetchRemoteActor($follower_actor_url, $actor);
 		if (!$remote_actor)
 		{
+			self::debugLog('handleFollow: FAIL - Cannot fetch remote actor');
 			$this->sendJsonResponse(['error' => 'Cannot fetch remote actor'], 400);
 			return;
 		}
 
 		$follower_inbox_url = $remote_actor['inbox'] ?? '';
 		$follower_shared_inbox_url = $remote_actor['endpoints']['sharedInbox'] ?? '';
+		self::debugLog('handleFollow: Follower inbox: ' . ($follower_inbox_url ?: '(empty)'));
+		self::debugLog('handleFollow: Follower shared inbox: ' . ($follower_shared_inbox_url ?: '(empty)'));
 
 		if (!$follower_inbox_url)
 		{
+			self::debugLog('handleFollow: FAIL - Remote actor has no inbox');
 			$this->sendJsonResponse(['error' => 'Remote actor has no inbox'], 400);
 			return;
 		}
@@ -562,6 +584,7 @@ class Endpoint extends Base
 			$follower_inbox_url,
 			$follower_shared_inbox_url
 		);
+		self::debugLog('handleFollow: Follower added to DB');
 
 		// Accept 응답 전송
 		$actor_url = ActorModel::getActorUrl($actor->preferred_username);
@@ -573,8 +596,12 @@ class Endpoint extends Base
 		]);
 
 		$body = $accept->toJson(JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-		$this->sendSignedRequest($actor, $follower_inbox_url, $body);
+		self::debugLog('handleFollow: Sending Accept to: ' . $follower_inbox_url);
+		self::debugLog('handleFollow: Accept body (first 500 chars): ' . substr($body, 0, 500));
+		$result = $this->sendSignedRequest($actor, $follower_inbox_url, $body);
+		self::debugLog('handleFollow: sendSignedRequest result: ' . ($result ? 'SUCCESS' : 'FAIL'));
 
+		self::debugLog('--- handleFollow END ---');
 		$this->sendJsonResponse(['status' => 'accepted'], 202);
 	}
 
@@ -586,39 +613,140 @@ class Endpoint extends Base
 	 */
 	protected function handleUndo($actor, $payload)
 	{
+		self::debugLog('--- handleUndo START ---');
+		self::debugLog('handleUndo: Local actor: ' . $actor->preferred_username . ' (actor_srl: ' . $actor->actor_srl . ')');
+
 		$object = $payload->object;
 		if (!$object || !($object instanceof \ActivityPhp\Type\AbstractObject) || $object->type !== 'Follow')
 		{
+			self::debugLog('handleUndo: Not an Undo Follow (object type: ' . ($object instanceof \ActivityPhp\Type\AbstractObject ? $object->type : gettype($object)) . ')');
 			$this->sendJsonResponse(['status' => 'accepted'], 202);
 			return;
 		}
 
 		$follower_actor_url = $payload->actor;
+		self::debugLog('handleUndo: Follower actor URL: ' . ($follower_actor_url ?: '(empty)'));
 		if ($follower_actor_url)
 		{
 			ActorModel::removeFollower($actor->actor_srl, $follower_actor_url);
+			self::debugLog('handleUndo: Follower removed from DB');
 		}
 
+		self::debugLog('--- handleUndo END ---');
 		$this->sendJsonResponse(['status' => 'accepted'], 202);
 	}
 
 	/**
 	 * 원격 Actor 정보 가져오기
+	 * 서명된 HTTP GET 요청을 사용하여 Authorized Fetch가 활성화된 서버도 지원
 	 *
 	 * @param string $url
+	 * @param object|null $signingActor 서명에 사용할 로컬 Actor (null이면 아무 Actor 사용)
 	 * @return array|null
 	 */
-	protected function fetchRemoteActor($url)
+	protected function fetchRemoteActor($url, $signingActor = null)
 	{
 		self::debugLog('--- fetchRemoteActor START ---');
 		self::debugLog('Fetching URL: ' . $url);
 
+		// 서명에 사용할 Actor 결정
+		if (!$signingActor)
+		{
+			// URL 컨텍스트에서 preferred_username 가져오기 시도
+			$preferred_username = Context::get('preferred_username');
+			if (!$preferred_username)
+			{
+				$preferred_username = $_GET['preferred_username'] ?? '';
+			}
+			if ($preferred_username)
+			{
+				$signingActor = ActorModel::getActiveActorByPreferredUsername($preferred_username);
+			}
+
+			// 그래도 없으면 아무 Actor나 가져오기
+			if (!$signingActor)
+			{
+				$actorList = ActorModel::getActorList(1);
+				if ($actorList->toBool() && !empty($actorList->data))
+				{
+					$actors = is_array($actorList->data) ? $actorList->data : [$actorList->data];
+					foreach ($actors as $a)
+					{
+						if (($a->is_deleted ?? 'N') !== 'Y' && !empty($a->private_key))
+						{
+							$signingActor = $a;
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		if ($signingActor)
+		{
+			self::debugLog('fetchRemoteActor: Signing with actor: ' . $signingActor->preferred_username);
+		}
+		else
+		{
+			self::debugLog('fetchRemoteActor: WARNING - No signing actor available, sending unsigned request');
+		}
+
+		// HTTP 요청 헤더 구성
+		$headers = [
+			'Accept: application/activity+json, application/ld+json',
+		];
+
+		// 서명 Actor가 있으면 HTTP Signature 추가
+		if ($signingActor && !empty($signingActor->private_key))
+		{
+			$parsed = parse_url($url);
+			$host = $parsed['host'] ?? '';
+			$path = $parsed['path'] ?? '/';
+			if (!empty($parsed['query']))
+			{
+				$path .= '?' . $parsed['query'];
+			}
+
+			$date = gmdate('D, d M Y H:i:s \G\M\T');
+
+			$actor_url = ActorModel::getActorUrl($signingActor->preferred_username);
+			$key_id = $actor_url . '#main-key';
+
+			// GET 요청에는 Digest가 없음
+			$signing_string = "(request-target): get " . $path . "\n";
+			$signing_string .= "host: " . $host . "\n";
+			$signing_string .= "date: " . $date;
+
+			$private_key = openssl_pkey_get_private($signingActor->private_key);
+			if ($private_key)
+			{
+				$signature = '';
+				$success = openssl_sign($signing_string, $signature, $private_key, OPENSSL_ALGO_SHA256);
+				if ($success)
+				{
+					$signature_b64 = base64_encode($signature);
+					$signature_header = 'keyId="' . $key_id . '",algorithm="rsa-sha256",headers="(request-target) host date",signature="' . $signature_b64 . '"';
+
+					$headers[] = 'Host: ' . $host;
+					$headers[] = 'Date: ' . $date;
+					$headers[] = 'Signature: ' . $signature_header;
+					self::debugLog('fetchRemoteActor: HTTP Signature added');
+				}
+				else
+				{
+					self::debugLog('fetchRemoteActor: WARNING - openssl_sign failed');
+				}
+			}
+			else
+			{
+				self::debugLog('fetchRemoteActor: WARNING - openssl_pkey_get_private failed');
+			}
+		}
+
 		$ch = curl_init($url);
 		curl_setopt_array($ch, [
 			CURLOPT_RETURNTRANSFER => true,
-			CURLOPT_HTTPHEADER => [
-				'Accept: application/activity+json, application/ld+json',
-			],
+			CURLOPT_HTTPHEADER => $headers,
 			CURLOPT_TIMEOUT => 10,
 			CURLOPT_CONNECTTIMEOUT => 5,
 			CURLOPT_FOLLOWLOCATION => true,
@@ -665,9 +793,14 @@ class Endpoint extends Base
 	 */
 	protected function sendSignedRequest($actor, $url, $body)
 	{
+		self::debugLog('--- sendSignedRequest START ---');
+		self::debugLog('sendSignedRequest: Target URL: ' . $url);
+		self::debugLog('sendSignedRequest: Signing actor: ' . $actor->preferred_username);
+
 		$parsed = parse_url($url);
 		if (!$parsed || !isset($parsed['host']))
 		{
+			self::debugLog('sendSignedRequest: FAIL - Invalid URL');
 			return false;
 		}
 
@@ -692,6 +825,7 @@ class Endpoint extends Base
 		$private_key = openssl_pkey_get_private($actor->private_key);
 		if (!$private_key)
 		{
+			self::debugLog('sendSignedRequest: FAIL - openssl_pkey_get_private failed');
 			return false;
 		}
 
@@ -699,6 +833,7 @@ class Endpoint extends Base
 		$success = openssl_sign($signing_string, $signature, $private_key, OPENSSL_ALGO_SHA256);
 		if (!$success)
 		{
+			self::debugLog('sendSignedRequest: FAIL - openssl_sign failed');
 			return false;
 		}
 
@@ -729,9 +864,20 @@ class Endpoint extends Base
 
 		$response = curl_exec($ch);
 		$http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		$curl_error = curl_error($ch);
 		curl_close($ch);
 
-		return ($http_code >= 200 && $http_code < 300);
+		self::debugLog('sendSignedRequest: HTTP code: ' . $http_code);
+		if ($curl_error)
+		{
+			self::debugLog('sendSignedRequest: cURL error: ' . $curl_error);
+		}
+		self::debugLog('sendSignedRequest: Response (first 500 chars): ' . substr($response ?: '(empty)', 0, 500));
+
+		$result = ($http_code >= 200 && $http_code < 300);
+		self::debugLog('sendSignedRequest: Result: ' . ($result ? 'SUCCESS' : 'FAIL'));
+		self::debugLog('--- sendSignedRequest END ---');
+		return $result;
 	}
 
 	/**
@@ -841,6 +987,7 @@ class Endpoint extends Base
 	public function procActivitypubSharedInbox()
 	{
 		$method = $_SERVER['REQUEST_METHOD'] ?? 'POST';
+		self::debugLog('--- procActivitypubSharedInbox START (method: ' . $method . ') ---');
 
 		// GET 요청: 빈 OrderedCollection 반환
 		if ($method === 'GET')
@@ -868,9 +1015,12 @@ class Endpoint extends Base
 		$raw_body = file_get_contents('php://input');
 		if (!$raw_body)
 		{
+			self::debugLog('procActivitypubSharedInbox POST: Empty body');
 			$this->sendJsonResponse(['error' => 'Empty body'], 400);
 			return;
 		}
+
+		self::debugLog('procActivitypubSharedInbox POST body (first 500 chars): ' . substr($raw_body, 0, 500));
 
 		try
 		{
@@ -878,6 +1028,7 @@ class Endpoint extends Base
 		}
 		catch (\Exception $e)
 		{
+			self::debugLog('procActivitypubSharedInbox POST: Invalid JSON: ' . $e->getMessage());
 			$this->sendJsonResponse(['error' => 'Invalid JSON'], 400);
 			return;
 		}
@@ -886,11 +1037,15 @@ class Endpoint extends Base
 		$actor = $this->resolveTargetActorFromPayload($payload);
 		if (!$actor)
 		{
+			self::debugLog('procActivitypubSharedInbox POST: Could not resolve target actor from payload');
 			$this->sendJsonResponse(['status' => 'accepted'], 202);
 			return;
 		}
 
+		self::debugLog('procActivitypubSharedInbox POST: Resolved target actor: ' . $actor->preferred_username . ' (actor_srl: ' . $actor->actor_srl . ')');
+
 		$type = $payload->type;
+		self::debugLog('procActivitypubSharedInbox POST: Activity type: ' . $type);
 
 		switch ($type)
 		{
@@ -903,6 +1058,7 @@ class Endpoint extends Base
 				break;
 
 			default:
+				self::debugLog('procActivitypubSharedInbox POST: Unhandled activity type: ' . $type);
 				$this->sendJsonResponse(['status' => 'accepted'], 202);
 				break;
 		}
@@ -916,6 +1072,7 @@ class Endpoint extends Base
 	 */
 	protected function resolveTargetActorFromPayload($payload)
 	{
+		self::debugLog('--- resolveTargetActorFromPayload START ---');
 		$type = $payload->type ?? '';
 		$target_url = '';
 
@@ -924,6 +1081,7 @@ class Endpoint extends Base
 		{
 			$object = $payload->object;
 			$target_url = is_string($object) ? $object : '';
+			self::debugLog('resolveTargetActorFromPayload: Follow target URL: ' . ($target_url ?: '(empty)'));
 		}
 		// Undo: 내부 object에서 대상 찾기
 		elseif ($type === 'Undo' && $payload->object instanceof \ActivityPhp\Type\AbstractObject)
@@ -933,11 +1091,21 @@ class Endpoint extends Base
 			{
 				$inner_object = $inner->object;
 				$target_url = is_string($inner_object) ? $inner_object : '';
+				self::debugLog('resolveTargetActorFromPayload: Undo Follow target URL: ' . ($target_url ?: '(empty)'));
 			}
+			else
+			{
+				self::debugLog('resolveTargetActorFromPayload: Undo inner type is not Follow: ' . $inner->type);
+			}
+		}
+		else
+		{
+			self::debugLog('resolveTargetActorFromPayload: Unhandled type: ' . $type);
 		}
 
 		if (!$target_url)
 		{
+			self::debugLog('resolveTargetActorFromPayload: No target URL found');
 			return null;
 		}
 
@@ -945,6 +1113,7 @@ class Endpoint extends Base
 		$query_string = parse_url($target_url, PHP_URL_QUERY);
 		if (!$query_string)
 		{
+			self::debugLog('resolveTargetActorFromPayload: No query string in target URL');
 			return null;
 		}
 
@@ -952,10 +1121,14 @@ class Endpoint extends Base
 		$preferred_username = $params['preferred_username'] ?? '';
 		if (!$preferred_username)
 		{
+			self::debugLog('resolveTargetActorFromPayload: No preferred_username in query string');
 			return null;
 		}
 
-		return ActorModel::getActiveActorByPreferredUsername($preferred_username);
+		self::debugLog('resolveTargetActorFromPayload: Resolved preferred_username: ' . $preferred_username);
+		$actor = ActorModel::getActiveActorByPreferredUsername($preferred_username);
+		self::debugLog('resolveTargetActorFromPayload: Actor found: ' . ($actor ? 'YES' : 'NO'));
+		return $actor;
 	}
 
 	/**
