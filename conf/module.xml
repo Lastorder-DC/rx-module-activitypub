@@ -18,6 +18,7 @@
 			<route route=".well-known/webfinger" />
 		</action>
 		<action name="dispActivitypubActor" class="Controllers\Endpoint" />
+		<action name="dispActivitypubNote" class="Controllers\Endpoint" />
 		<action name="dispActivitypubOutbox" class="Controllers\Endpoint" />
 		<action name="dispActivitypubFollowers" class="Controllers\Endpoint" />
 		<action name="dispActivitypubFollowing" class="Controllers\Endpoint" />

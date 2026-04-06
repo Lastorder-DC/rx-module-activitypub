@@ -711,6 +711,30 @@ class Actor
 	}
 
 	/**
+	 * Note(게시물)의 ActivityPub URL 가져오기
+	 *
+	 * @param string $preferred_username
+	 * @param int $document_srl
+	 * @return string
+	 */
+	public static function getNoteUrl($preferred_username, $document_srl)
+	{
+		return self::getSiteUrl() . '?module=activitypub&act=dispActivitypubNote&preferred_username=' . urlencode($preferred_username) . '&document_srl=' . intval($document_srl);
+	}
+
+	/**
+	 * Note(댓글)의 ActivityPub URL 가져오기
+	 *
+	 * @param string $preferred_username
+	 * @param int $comment_srl
+	 * @return string
+	 */
+	public static function getCommentNoteUrl($preferred_username, $comment_srl)
+	{
+		return self::getSiteUrl() . '?module=activitypub&act=dispActivitypubNote&preferred_username=' . urlencode($preferred_username) . '&comment_srl=' . intval($comment_srl);
+	}
+
+	/**
 	 * 공유 Inbox URL 가져오기
 	 *
 	 * @return string

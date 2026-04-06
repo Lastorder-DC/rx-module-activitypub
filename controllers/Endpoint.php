@@ -369,7 +369,7 @@ class Endpoint extends Base
 			$html_content .= '<p><a href="' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
 
 			$published = self::formatRegdateToIso($doc->regdate ?? '');
-			$note_id = $actor_url . '/note/' . $document_srl;
+			$note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
 
 			$note = Type::create('Note', [
 				'id' => $note_id,
@@ -388,7 +388,7 @@ class Endpoint extends Base
 			}
 
 			$activity = Type::create('Create', [
-				'id' => $note_id . '/activity',
+				'id' => $note_id . '&type=activity',
 				'actor' => $actor_url,
 				'published' => $published,
 				'to' => ['https://www.w3.org/ns/activitystreams#Public'],
@@ -420,6 +420,166 @@ class Endpoint extends Base
 
 		$outboxPage = Type::create('OrderedCollectionPage', $page_data);
 		$this->sendActivityResponse($outboxPage);
+	}
+
+	/**
+	 * Note 엔드포인트
+	 * 개별 게시물(document) 또는 댓글(comment)을 Note 객체로 반환
+	 */
+	public function dispActivitypubNote()
+	{
+		// Authorized Fetch 모드일 경우 HTTP Signature 검증
+		if (!$this->checkAuthorizedFetch())
+		{
+			return;
+		}
+
+		$preferred_username = Context::get('preferred_username');
+		if (!$preferred_username)
+		{
+			$this->sendJsonResponse(['error' => 'Missing username'], 400);
+			return;
+		}
+
+		$actor = ActorModel::getActiveActorByPreferredUsername($preferred_username);
+		if (!$actor)
+		{
+			$this->sendJsonResponse(['error' => 'Unknown user'], 404);
+			return;
+		}
+
+		$actor_url = ActorModel::getActorUrl($actor->preferred_username);
+		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
+		$site_url = ActorModel::getSiteUrl();
+
+		$document_srl = intval(Context::get('document_srl'));
+		$comment_srl = intval(Context::get('comment_srl'));
+
+		// 댓글 Note
+		if ($comment_srl > 0)
+		{
+			$comment = \CommentModel::getComment($comment_srl);
+			if (!$comment || !$comment->comment_srl)
+			{
+				$this->sendJsonResponse(['error' => 'Not found'], 404);
+				return;
+			}
+
+			// 비밀 댓글 제외
+			if (($comment->is_secret ?? '') === 'Y')
+			{
+				$this->sendJsonResponse(['error' => 'Not found'], 404);
+				return;
+			}
+
+			// 비공개 게시판 게시물 제외
+			if (!ActorModel::isModulePubliclyAccessible($comment->module_srl))
+			{
+				$this->sendJsonResponse(['error' => 'Not found'], 404);
+				return;
+			}
+
+			$document_srl = $comment->document_srl;
+			$mid = ModuleModel::getMidByModuleSrl($comment->module_srl);
+			$document_url = $site_url . '?mid=' . urlencode($mid) . '&document_srl=' . $document_srl;
+			$comment_url = $document_url . '#comment_' . $comment_srl;
+
+			$content = $comment->content ?? '';
+			$content_text = strip_tags($content);
+			if (mb_strlen($content_text) > 500)
+			{
+				$content_text = mb_substr($content_text, 0, 497) . '...';
+			}
+
+			$html_content = '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
+			$html_content .= '<p><a href="' . htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
+
+			$note_id = ActorModel::getCommentNoteUrl($actor->preferred_username, $comment_srl);
+			$parent_note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
+			$published = self::formatRegdateToIso($comment->regdate ?? '');
+
+			$note = Type::create('Note', [
+				'@context' => 'https://www.w3.org/ns/activitystreams',
+				'id' => $note_id,
+				'published' => $published,
+				'attributedTo' => $actor_url,
+				'content' => $html_content,
+				'url' => $comment_url,
+				'inReplyTo' => $parent_note_id,
+				'to' => ['https://www.w3.org/ns/activitystreams#Public'],
+				'cc' => [$followers_url],
+			]);
+
+			$this->sendActivityResponse($note);
+			return;
+		}
+
+		// 게시물 Note
+		if ($document_srl > 0)
+		{
+			$oDocument = \DocumentModel::getDocument($document_srl);
+			if (!$oDocument || !$oDocument->document_srl)
+			{
+				$this->sendJsonResponse(['error' => 'Not found'], 404);
+				return;
+			}
+
+			// 공개 글만 처리
+			$status = $oDocument->status ?? '';
+			if ($status !== 'PUBLIC' && $status !== '')
+			{
+				$this->sendJsonResponse(['error' => 'Not found'], 404);
+				return;
+			}
+
+			// 비공개 게시판 게시물 제외
+			if (!ActorModel::isModulePubliclyAccessible($oDocument->module_srl))
+			{
+				$this->sendJsonResponse(['error' => 'Not found'], 404);
+				return;
+			}
+
+			$mid = ModuleModel::getMidByModuleSrl($oDocument->module_srl);
+			$document_url = $site_url . '?mid=' . urlencode($mid) . '&document_srl=' . $document_srl;
+
+			$title = $oDocument->title ?? '';
+			$content = $oDocument->content ?? '';
+
+			$content_text = strip_tags($content);
+			if (mb_strlen($content_text) > 500)
+			{
+				$content_text = mb_substr($content_text, 0, 497) . '...';
+			}
+
+			$html_content = '<p><strong>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</strong></p>';
+			$html_content .= '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
+			$html_content .= '<p><a href="' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
+
+			$note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
+			$published = self::formatRegdateToIso($oDocument->regdate ?? '');
+
+			$note = Type::create('Note', [
+				'@context' => 'https://www.w3.org/ns/activitystreams',
+				'id' => $note_id,
+				'published' => $published,
+				'attributedTo' => $actor_url,
+				'content' => $html_content,
+				'url' => $document_url,
+				'to' => ['https://www.w3.org/ns/activitystreams#Public'],
+				'cc' => [$followers_url],
+			]);
+
+			// 수정일이 있고 등록일과 다르면 updated 필드 추가
+			if (!empty($oDocument->last_update) && ($oDocument->last_update ?? '') !== ($oDocument->regdate ?? ''))
+			{
+				$note->set('updated', self::formatRegdateToIso($oDocument->last_update));
+			}
+
+			$this->sendActivityResponse($note);
+			return;
+		}
+
+		$this->sendJsonResponse(['error' => 'Missing document_srl or comment_srl'], 400);
 	}
 
 	/**
