@@ -492,6 +492,78 @@ class Actor
 	}
 
 	/**
+	 * Actor에 해당하는 공개 게시물 목록 가져오기
+	 * 게시판 Actor: module_srl에 해당하는 게시물
+	 * 유저 Actor: member_srl에 해당하는 게시물 (모듈 필터 적용)
+	 *
+	 * @param object $actor
+	 * @param int $page
+	 * @param int $list_count
+	 * @return object
+	 */
+	public static function getDocumentsForActor($actor, $page = 1, $list_count = 20)
+	{
+		$args = new \stdClass;
+		$args->statusList = ['PUBLIC'];
+		$args->page = $page;
+		$args->list_count = $list_count;
+		$args->page_count = 10;
+		$args->sort_index = 'regdate';
+		$args->order_type = 'desc';
+
+		$actor_type = $actor->actor_type ?? 'board';
+
+		if ($actor_type === 'board' && $actor->module_srl)
+		{
+			// 게시판이 공개 접근 가능한지 확인
+			if (!self::isModulePubliclyAccessible($actor->module_srl))
+			{
+				$result = new \BaseObject();
+				$result->data = [];
+				$result->total_count = 0;
+				return $result;
+			}
+			$args->module_srl = $actor->module_srl;
+		}
+		elseif ($actor_type === 'user' && $actor->member_srl)
+		{
+			$args->member_srl = $actor->member_srl;
+
+			// 모듈 필터가 설정된 경우 해당 모듈만
+			$filter_modules = self::getActorModules($actor->actor_srl);
+			if (!empty($filter_modules))
+			{
+				$module_srls = [];
+				foreach ($filter_modules as $fm)
+				{
+					$module_srl = intval($fm->module_srl ?? $fm['module_srl'] ?? 0);
+					if ($module_srl > 0 && self::isModulePubliclyAccessible($module_srl))
+					{
+						$module_srls[] = $module_srl;
+					}
+				}
+				if (empty($module_srls))
+				{
+					$result = new \BaseObject();
+					$result->data = [];
+					$result->total_count = 0;
+					return $result;
+				}
+				$args->module_srl = $module_srls;
+			}
+		}
+		else
+		{
+			$result = new \BaseObject();
+			$result->data = [];
+			$result->total_count = 0;
+			return $result;
+		}
+
+		return \DocumentModel::getDocumentList($args);
+	}
+
+	/**
 	 * RSA 키 쌍 생성
 	 *
 	 * @return array|null ['public' => '...', 'private' => '...']

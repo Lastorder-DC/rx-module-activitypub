@@ -271,6 +271,7 @@ class Endpoint extends Base
 
 	/**
 	 * Outbox 엔드포인트
+	 * page 파라미터가 없으면 OrderedCollection (요약), 있으면 OrderedCollectionPage (실제 콘텐츠)
 	 */
 	public function dispActivitypubOutbox()
 	{
@@ -296,16 +297,117 @@ class Endpoint extends Base
 
 		$actor_url = ActorModel::getActorUrl($actor->preferred_username);
 		$outbox_url = ActorModel::getOutboxUrl($actor->preferred_username);
+		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
+		$site_url = ActorModel::getSiteUrl();
+		$page = intval(Context::get('page'));
 
-		// 간단한 빈 Outbox 응답 (OrderedCollection)
-		$outboxCollection = Type::create('OrderedCollection', [
+		// 페이지 파라미터가 없으면 OrderedCollection 요약 반환
+		if ($page < 1)
+		{
+			$documents_output = ActorModel::getDocumentsForActor($actor, 1, 1);
+			$total_items = intval($documents_output->total_count ?? 0);
+
+			$collection_data = [
+				'@context' => 'https://www.w3.org/ns/activitystreams',
+				'id' => $outbox_url,
+				'totalItems' => $total_items,
+			];
+
+			if ($total_items > 0)
+			{
+				$collection_data['first'] = $outbox_url . '&page=1';
+			}
+
+			$outboxCollection = Type::create('OrderedCollection', $collection_data);
+			$this->sendActivityResponse($outboxCollection);
+			return;
+		}
+
+		// 페이지별 게시물 가져오기
+		$list_count = 20;
+		$documents_output = ActorModel::getDocumentsForActor($actor, $page, $list_count);
+		$total_items = intval($documents_output->total_count ?? 0);
+		$documents = $documents_output->data ?? [];
+		if (!is_array($documents))
+		{
+			$documents = $documents ? [$documents] : [];
+		}
+
+		// 각 게시물을 Create(Note) Activity로 변환
+		$ordered_items = [];
+		foreach ($documents as $doc)
+		{
+			$document_srl = $doc->document_srl;
+			$module_srl = $doc->module_srl;
+			$mid = ModuleModel::getMidByModuleSrl($module_srl);
+			$document_url = $site_url . '?mid=' . urlencode($mid) . '&document_srl=' . $document_srl;
+
+			$title = $doc->title ?? '';
+			$content = $doc->content ?? '';
+
+			// HTML을 평문으로 변환
+			$content_text = strip_tags($content);
+			if (mb_strlen($content_text) > 500)
+			{
+				$content_text = mb_substr($content_text, 0, 497) . '...';
+			}
+
+			$html_content = '<p><strong>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</strong></p>';
+			$html_content .= '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
+			$html_content .= '<p><a href="' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
+
+			$published = self::formatRegdateToIso($doc->regdate ?? '');
+			$note_id = $actor_url . '/note/' . $document_srl;
+
+			$note = Type::create('Note', [
+				'id' => $note_id,
+				'published' => $published,
+				'attributedTo' => $actor_url,
+				'content' => $html_content,
+				'url' => $document_url,
+				'to' => ['https://www.w3.org/ns/activitystreams#Public'],
+				'cc' => [$followers_url],
+			]);
+
+			// 수정일이 있고 등록일과 다르면 updated 필드 추가
+			if (!empty($doc->last_update) && ($doc->last_update ?? '') !== ($doc->regdate ?? ''))
+			{
+				$note->set('updated', self::formatRegdateToIso($doc->last_update));
+			}
+
+			$activity = Type::create('Create', [
+				'id' => $note_id . '/activity',
+				'actor' => $actor_url,
+				'published' => $published,
+				'to' => ['https://www.w3.org/ns/activitystreams#Public'],
+				'cc' => [$followers_url],
+				'object' => $note->toArray(),
+			]);
+
+			$ordered_items[] = $activity->toArray();
+		}
+
+		// OrderedCollectionPage 생성
+		$page_data = [
 			'@context' => 'https://www.w3.org/ns/activitystreams',
-			'id' => $outbox_url,
-			'totalItems' => 0,
-			'orderedItems' => [],
-		]);
+			'id' => $outbox_url . '&page=' . $page,
+			'partOf' => $outbox_url,
+			'orderedItems' => $ordered_items,
+		];
 
-		$this->sendActivityResponse($outboxCollection);
+		// 다음 페이지 링크
+		$total_pages = $total_items > 0 ? ceil($total_items / $list_count) : 1;
+		if ($page < $total_pages)
+		{
+			$page_data['next'] = $outbox_url . '&page=' . ($page + 1);
+		}
+		if ($page > 1)
+		{
+			$page_data['prev'] = $outbox_url . '&page=' . ($page - 1);
+		}
+
+		$outboxPage = Type::create('OrderedCollectionPage', $page_data);
+		$this->sendActivityResponse($outboxPage);
 	}
 
 	/**
