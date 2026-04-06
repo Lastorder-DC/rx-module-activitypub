@@ -980,7 +980,7 @@ class Endpoint extends Base
 	{
 		$domain = ActorModel::getSiteDomain();
 		$scheme = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-		$port = ($scheme === 'https') ? 443 : 80;
+		$port = intval($_SERVER['SERVER_PORT'] ?? (($scheme === 'https') ? 443 : 80));
 
 		return new Server([
 			'instance' => [

@@ -24,7 +24,7 @@ class ActivityPubRequest extends Request
 	 */
 	public function getQueryString(): ?string
 	{
-		$qs = $this->server->get('QUERY_STRING', '');
-		return '' === $qs ? null : $qs;
+		$qs = $this->server->get('QUERY_STRING');
+		return ($qs === '' || $qs === null) ? null : $qs;
 	}
 }
