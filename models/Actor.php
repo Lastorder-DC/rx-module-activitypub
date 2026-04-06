@@ -645,11 +645,25 @@ class Actor
 
 	/**
 	 * 사이트 기본 URL 가져오기
+	 * CLI/Queue 환경에서도 올바른 scheme을 반환하도록 site_module_info->security 확인
+	 *
+	 * 주의: Context::getRequestUri()는 CLI 환경에서 RX_BASEURL(파일시스템 절대경로)이
+	 * URL에 붙는 버그가 있으므로 사용하지 않음
 	 *
 	 * @return string
 	 */
 	public static function getSiteUrl()
 	{
+		$site_module_info = \Context::get('site_module_info');
+
+		// site_module_info에서 security 설정을 확인하여 scheme 결정 (CLI/Queue 환경 대응)
+		if ($site_module_info && !empty($site_module_info->domain))
+		{
+			$scheme = (!empty($site_module_info->security) && $site_module_info->security !== 'none') ? 'https' : 'http';
+			return $scheme . '://' . $site_module_info->domain . '/';
+		}
+
+		// Fallback: $_SERVER에서 추출
 		$scheme = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 		$domain = self::getSiteDomain();
 		return $scheme . '://' . $domain . '/';
