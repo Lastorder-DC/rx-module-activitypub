@@ -31,16 +31,47 @@ class Actor
 	}
 
 	/**
-	 * module_srl로 Actor 가져오기
+	 * module_srl로 게시판 타입 Actor 가져오기
+	 *
+	 * @param int $module_srl
+	 * @return object|null
+	 */
+	public static function getBoardActorByModuleSrl($module_srl)
+	{
+		$args = new \stdClass;
+		$args->actor_type = 'board';
+		$args->module_srl = $module_srl;
+		$output = executeQuery('activitypub.getBoardActorByModuleSrl', $args);
+		if (!$output->toBool() || !$output->data)
+		{
+			return null;
+		}
+		return $output->data;
+	}
+
+	/**
+	 * module_srl로 Actor 가져오기 (하위호환)
 	 *
 	 * @param int $module_srl
 	 * @return object|null
 	 */
 	public static function getActorByModuleSrl($module_srl)
 	{
+		return self::getBoardActorByModuleSrl($module_srl);
+	}
+
+	/**
+	 * member_srl로 유저 타입 Actor 가져오기
+	 *
+	 * @param int $member_srl
+	 * @return object|null
+	 */
+	public static function getUserActorByMemberSrl($member_srl)
+	{
 		$args = new \stdClass;
-		$args->module_srl = $module_srl;
-		$output = executeQuery('activitypub.getActorByModuleSrl', $args);
+		$args->actor_type = 'user';
+		$args->member_srl = $member_srl;
+		$output = executeQuery('activitypub.getActorByMemberSrl', $args);
 		if (!$output->toBool() || !$output->data)
 		{
 			return null;
@@ -67,17 +98,66 @@ class Actor
 	}
 
 	/**
-	 * Actor 생성
-	 * module_srl과 preferred_username(mid)을 연결하고 RSA 키 쌍 생성
+	 * 특정 게시물/댓글에 해당하는 모든 Actor를 가져오기
+	 * 게시판 Actor + 유저 Actor(필터 통과 시)를 반환
+	 *
+	 * @param int $module_srl 게시판 module_srl
+	 * @param int $member_srl 작성자 member_srl
+	 * @return array Actor 목록
+	 */
+	public static function getActorsForDocument($module_srl, $member_srl = 0)
+	{
+		$actors = [];
+
+		// 1. 게시판 타입 Actor 확인
+		$board_actor = self::getBoardActorByModuleSrl($module_srl);
+		if ($board_actor)
+		{
+			$actors[] = $board_actor;
+		}
+
+		// 2. 유저 타입 Actor 확인 (member_srl이 있는 경우)
+		if ($member_srl)
+		{
+			$user_actor = self::getUserActorByMemberSrl($member_srl);
+			if ($user_actor)
+			{
+				// 모듈 필터 확인
+				$filter_modules = self::getActorModules($user_actor->actor_srl);
+				if (empty($filter_modules))
+				{
+					// 필터가 비어있으면 모든 게시판 대상
+					$actors[] = $user_actor;
+				}
+				else
+				{
+					// 필터에 해당 모듈이 포함되어 있는지 확인
+					$filter_module_srls = array_map('intval', array_column($filter_modules, 'module_srl'));
+					if (in_array(intval($module_srl), $filter_module_srls))
+					{
+						$actors[] = $user_actor;
+					}
+				}
+			}
+		}
+
+		return $actors;
+	}
+
+	/**
+	 * 게시판 타입 Actor 생성
 	 *
 	 * @param int $module_srl
 	 * @param string $preferred_username
+	 * @param string $display_name
+	 * @param string $summary
+	 * @param string $icon_url
 	 * @return object
 	 */
-	public static function createActor($module_srl, $preferred_username)
+	public static function createBoardActor($module_srl, $preferred_username, $display_name = '', $summary = '', $icon_url = '')
 	{
 		// 이미 존재하는지 확인
-		$existing = self::getActorByModuleSrl($module_srl);
+		$existing = self::getBoardActorByModuleSrl($module_srl);
 		if ($existing)
 		{
 			return new \BaseObject(-1, 'msg_activitypub_actor_already_exists');
@@ -99,8 +179,12 @@ class Actor
 
 		$args = new \stdClass;
 		$args->actor_srl = getNextSequence();
+		$args->actor_type = 'board';
 		$args->module_srl = $module_srl;
 		$args->preferred_username = $preferred_username;
+		$args->display_name = $display_name;
+		$args->summary = $summary;
+		$args->icon_url = $icon_url;
 		$args->public_key = $keyPair['public'];
 		$args->private_key = $keyPair['private'];
 		$args->regdate = date('YmdHis');
@@ -113,6 +197,73 @@ class Actor
 
 		$output->data = $args;
 		return $output;
+	}
+
+	/**
+	 * 유저 타입 Actor 생성
+	 *
+	 * @param int $member_srl
+	 * @param string $preferred_username
+	 * @param string $display_name
+	 * @param string $summary
+	 * @param string $icon_url
+	 * @return object
+	 */
+	public static function createUserActor($member_srl, $preferred_username, $display_name = '', $summary = '', $icon_url = '')
+	{
+		// 이미 이 유저에 대한 Actor가 존재하는지 확인
+		$existing = self::getUserActorByMemberSrl($member_srl);
+		if ($existing)
+		{
+			return new \BaseObject(-1, 'msg_activitypub_actor_already_exists');
+		}
+
+		// preferred_username 중복 확인
+		$existingUsername = self::getActorByPreferredUsername($preferred_username);
+		if ($existingUsername)
+		{
+			return new \BaseObject(-1, 'msg_activitypub_username_already_exists');
+		}
+
+		// RSA 키 쌍 생성
+		$keyPair = self::generateKeyPair();
+		if (!$keyPair)
+		{
+			return new \BaseObject(-1, 'msg_activitypub_key_generation_failed');
+		}
+
+		$args = new \stdClass;
+		$args->actor_srl = getNextSequence();
+		$args->actor_type = 'user';
+		$args->member_srl = $member_srl;
+		$args->preferred_username = $preferred_username;
+		$args->display_name = $display_name;
+		$args->summary = $summary;
+		$args->icon_url = $icon_url;
+		$args->public_key = $keyPair['public'];
+		$args->private_key = $keyPair['private'];
+		$args->regdate = date('YmdHis');
+
+		$output = executeQuery('activitypub.insertActor', $args);
+		if (!$output->toBool())
+		{
+			return $output;
+		}
+
+		$output->data = $args;
+		return $output;
+	}
+
+	/**
+	 * Actor 생성 (하위호환)
+	 *
+	 * @param int $module_srl
+	 * @param string $preferred_username
+	 * @return object
+	 */
+	public static function createActor($module_srl, $preferred_username)
+	{
+		return self::createBoardActor($module_srl, $preferred_username);
 	}
 
 	/**
@@ -142,11 +293,17 @@ class Actor
 	 */
 	public static function deleteActor($actor_srl)
 	{
-		// 팔로워 먼저 삭제
+		// 모듈 필터 삭제
+		$args = new \stdClass;
+		$args->actor_srl = $actor_srl;
+		executeQuery('activitypub.deleteActorModulesByActorSrl', $args);
+
+		// 팔로워 삭제
 		$args = new \stdClass;
 		$args->actor_srl = $actor_srl;
 		executeQuery('activitypub.deleteFollowersByActorSrl', $args);
 
+		// Actor 삭제
 		$args = new \stdClass;
 		$args->actor_srl = $actor_srl;
 		return executeQuery('activitypub.deleteActor', $args);
@@ -166,6 +323,60 @@ class Actor
 		$args->page_count = 10;
 		$args->sort_index = 'actor_srl';
 		return executeQuery('activitypub.getActorList', $args);
+	}
+
+	/**
+	 * 유저 Actor의 모듈 필터 목록 가져오기
+	 *
+	 * @param int $actor_srl
+	 * @return array
+	 */
+	public static function getActorModules($actor_srl)
+	{
+		$args = new \stdClass;
+		$args->actor_srl = $actor_srl;
+		$output = executeQuery('activitypub.getActorModulesByActorSrl', $args);
+		if (!$output->toBool() || !$output->data)
+		{
+			return [];
+		}
+		return is_array($output->data) ? $output->data : [$output->data];
+	}
+
+	/**
+	 * 유저 Actor의 모듈 필터 설정
+	 *
+	 * @param int $actor_srl
+	 * @param array $module_srls
+	 * @return object
+	 */
+	public static function setActorModules($actor_srl, $module_srls)
+	{
+		// 기존 필터 삭제
+		$args = new \stdClass;
+		$args->actor_srl = $actor_srl;
+		executeQuery('activitypub.deleteActorModulesByActorSrl', $args);
+
+		// 새 필터 추가
+		foreach ($module_srls as $module_srl)
+		{
+			$module_srl = intval($module_srl);
+			if ($module_srl <= 0)
+			{
+				continue;
+			}
+			$args = new \stdClass;
+			$args->actor_module_srl = getNextSequence();
+			$args->actor_srl = $actor_srl;
+			$args->module_srl = $module_srl;
+			$output = executeQuery('activitypub.insertActorModule', $args);
+			if (!$output->toBool())
+			{
+				return $output;
+			}
+		}
+
+		return new \BaseObject();
 	}
 
 	/**
@@ -283,51 +494,6 @@ class Actor
 			'public' => $details['key'],
 			'private' => $privateKey,
 		];
-	}
-
-	/**
-	 * 해당 module_srl이 ActivityPub 대상인지 확인
-	 *
-	 * @param int $module_srl
-	 * @return bool
-	 */
-	public static function isModuleEnabled($module_srl)
-	{
-		$config = Config::getConfig();
-		$mode = $config->target_mode ?? 'include';
-		$target_mids = $config->target_mids ?? [];
-
-		if (!is_array($target_mids) || empty($target_mids))
-		{
-			return false;
-		}
-
-		// mid 목록을 module_srl 목록으로 변환
-		$target_module_srls = [];
-		foreach ($target_mids as $mid)
-		{
-			$mid = trim($mid);
-			if ($mid === '')
-			{
-				continue;
-			}
-			$srl_list = \ModuleModel::getModuleSrlByMid($mid);
-			if (!empty($srl_list))
-			{
-				$target_module_srls = array_merge($target_module_srls, $srl_list);
-			}
-		}
-
-		$target_module_srls = array_map('intval', $target_module_srls);
-
-		if ($mode === 'include')
-		{
-			return in_array(intval($module_srl), $target_module_srls);
-		}
-		else
-		{
-			return !in_array(intval($module_srl), $target_module_srls);
-		}
 	}
 
 	/**

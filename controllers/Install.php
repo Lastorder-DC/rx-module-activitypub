@@ -28,10 +28,25 @@ class Install extends Base
 	public function checkUpdate()
 	{
 		$oDB = \DB::getInstance();
+
+		// actor_type 컬럼이 없으면 업데이트 필요
+		if (!$oDB->isColumnExists('activitypub_actors', 'actor_type'))
+		{
+			return true;
+		}
+
+		// display_name 컬럼이 없으면 업데이트 필요
 		if (!$oDB->isColumnExists('activitypub_actors', 'display_name'))
 		{
 			return true;
 		}
+
+		// actor_modules 테이블이 없으면 업데이트 필요
+		if (!$oDB->isTableExists('activitypub_actor_modules'))
+		{
+			return true;
+		}
+
 		return false;
 	}
 
@@ -43,18 +58,45 @@ class Install extends Base
 	public function moduleUpdate()
 	{
 		$oDB = \DB::getInstance();
+
+		// actor_type 컬럼 추가 (기존 Actor는 board 타입으로)
+		if (!$oDB->isColumnExists('activitypub_actors', 'actor_type'))
+		{
+			$oDB->addColumn('activitypub_actors', 'actor_type', 'varchar', 10, 'board', true, 'actor_srl');
+			$oDB->addIndex('activitypub_actors', 'idx_actor_type', ['actor_type']);
+		}
+
+		// member_srl 컬럼 추가
+		if (!$oDB->isColumnExists('activitypub_actors', 'member_srl'))
+		{
+			$oDB->addColumn('activitypub_actors', 'member_srl', 'number', 11, null, false, 'actor_type');
+			$oDB->addIndex('activitypub_actors', 'idx_member_srl', ['member_srl']);
+		}
+
+		// display_name 컬럼 추가
 		if (!$oDB->isColumnExists('activitypub_actors', 'display_name'))
 		{
 			$oDB->addColumn('activitypub_actors', 'display_name', 'varchar', 255, null, false, 'preferred_username');
 		}
+
+		// summary 컬럼 추가
 		if (!$oDB->isColumnExists('activitypub_actors', 'summary'))
 		{
 			$oDB->addColumn('activitypub_actors', 'summary', 'bigtext', null, null, false, 'display_name');
 		}
+
+		// icon_url 컬럼 추가
 		if (!$oDB->isColumnExists('activitypub_actors', 'icon_url'))
 		{
 			$oDB->addColumn('activitypub_actors', 'icon_url', 'varchar', 500, null, false, 'summary');
 		}
+
+		// actor_modules 테이블 생성
+		if (!$oDB->isTableExists('activitypub_actor_modules'))
+		{
+			$oDB->createTableByXmlFile($this->module_path . 'schemas/activitypub_actor_modules.xml');
+		}
+
 		return new \BaseObject();
 	}
 

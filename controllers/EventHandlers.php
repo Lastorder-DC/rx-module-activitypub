@@ -26,12 +26,6 @@ class EventHandlers extends Base
 			return;
 		}
 
-		// 해당 모듈이 AP 대상인지 확인
-		if (!ActorModel::isModuleEnabled($obj->module_srl))
-		{
-			return;
-		}
-
 		// 공개 글만 처리
 		$status = $obj->status ?? '';
 		if ($status !== 'PUBLIC' && $status !== '')
@@ -39,15 +33,19 @@ class EventHandlers extends Base
 			return;
 		}
 
-		// Actor 가져오기
-		$actor = ActorModel::getActorByModuleSrl($obj->module_srl);
-		if (!$actor)
+		// 해당 게시물에 대한 모든 Actor 가져오기 (게시판 Actor + 유저 Actor)
+		$member_srl = $obj->member_srl ?? 0;
+		$actors = ActorModel::getActorsForDocument($obj->module_srl, $member_srl);
+		if (empty($actors))
 		{
 			return;
 		}
 
-		// ActivityPub Note 생성 및 팔로워에게 전송
-		$this->deliverDocumentToFollowers($actor, $obj);
+		// 각 Actor를 통해 팔로워에게 전송
+		foreach ($actors as $actor)
+		{
+			$this->deliverDocumentToFollowers($actor, $obj);
+		}
 	}
 
 	/**
@@ -70,12 +68,6 @@ class EventHandlers extends Base
 			return;
 		}
 
-		// 해당 모듈이 AP 대상인지 확인
-		if (!ActorModel::isModuleEnabled($obj->module_srl))
-		{
-			return;
-		}
-
 		// 비밀 댓글은 제외
 		if (isset($obj->is_secret) && $obj->is_secret === 'Y')
 		{
@@ -88,15 +80,19 @@ class EventHandlers extends Base
 			return;
 		}
 
-		// Actor 가져오기
-		$actor = ActorModel::getActorByModuleSrl($obj->module_srl);
-		if (!$actor)
+		// 해당 댓글에 대한 모든 Actor 가져오기
+		$member_srl = $obj->member_srl ?? 0;
+		$actors = ActorModel::getActorsForDocument($obj->module_srl, $member_srl);
+		if (empty($actors))
 		{
 			return;
 		}
 
-		// ActivityPub Note 생성 및 팔로워에게 전송
-		$this->deliverCommentToFollowers($actor, $obj);
+		// 각 Actor를 통해 팔로워에게 전송
+		foreach ($actors as $actor)
+		{
+			$this->deliverCommentToFollowers($actor, $obj);
+		}
 	}
 
 	/**
@@ -198,8 +194,8 @@ class EventHandlers extends Base
 		$actor_url = ActorModel::getActorUrl($actor->preferred_username);
 		$document_srl = $document->document_srl;
 
-		// 게시물 URL 생성
-		$mid = \ModuleModel::getMidByModuleSrl($actor->module_srl);
+		// 게시물 URL 생성 (문서가 속한 게시판 mid 사용)
+		$mid = \ModuleModel::getMidByModuleSrl($document->module_srl);
 		$document_url = $site_url . '?mid=' . urlencode($mid) . '&document_srl=' . $document_srl;
 
 		// 제목과 내용
@@ -261,8 +257,8 @@ class EventHandlers extends Base
 		$comment_srl = $comment->comment_srl;
 		$document_srl = $comment->document_srl;
 
-		// 부모 게시물 URL 생성
-		$mid = \ModuleModel::getMidByModuleSrl($actor->module_srl);
+		// 부모 게시물 URL 생성 (문서가 속한 게시판 mid 사용)
+		$mid = \ModuleModel::getMidByModuleSrl($comment->module_srl);
 		$document_url = $site_url . '?mid=' . urlencode($mid) . '&document_srl=' . $document_srl;
 		$comment_url = $document_url . '#comment_' . $comment_srl;
 

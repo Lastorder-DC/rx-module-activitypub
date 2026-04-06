@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <table name="activitypub_actors">
 	<column name="actor_srl" type="number" size="11" notnull="notnull" primary_key="primary_key" />
-	<column name="module_srl" type="number" size="11" notnull="notnull" unique="unique_module_srl" />
+	<column name="actor_type" type="varchar" size="10" notnull="notnull" default="board" index="idx_actor_type" />
+	<column name="module_srl" type="number" size="11" index="idx_module_srl" />
+	<column name="member_srl" type="number" size="11" index="idx_member_srl" />
 	<column name="preferred_username" type="varchar" size="80" notnull="notnull" unique="unique_preferred_username" />
 	<column name="display_name" type="varchar" size="255" />
 	<column name="summary" type="bigtext" />

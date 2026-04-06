@@ -104,42 +104,101 @@ class Endpoint extends Base
 		$actor_url = ActorModel::getActorUrl($actor->preferred_username);
 		$inbox_url = ActorModel::getInboxUrl($actor->preferred_username);
 		$outbox_url = ActorModel::getOutboxUrl($actor->preferred_username);
+		$actor_type = $actor->actor_type ?? 'board';
 
-		// 게시판 정보 가져오기
-		$mid = ModuleModel::getMidByModuleSrl($actor->module_srl);
-		$module_info = ModuleModel::getModuleInfoByModuleSrl($actor->module_srl);
-		$board_url = ActorModel::getSiteUrl() . '?mid=' . urlencode($mid);
+		// Actor 타입에 따라 기본값 결정
+		$name = '';
+		$summary = '';
+		$profile_url = '';
+		$ap_type = 'Service';
+		$attachment = [];
 
-		// 표시 이름: 저장된 값 → 게시판명 → preferred_username 순서로 사용
-		if (!empty($actor->display_name))
+		if ($actor_type === 'board' && $actor->module_srl)
 		{
-			$name = $actor->display_name;
+			$mid = ModuleModel::getMidByModuleSrl($actor->module_srl);
+			$module_info = ModuleModel::getModuleInfoByModuleSrl($actor->module_srl);
+			$board_url = ActorModel::getSiteUrl() . '?mid=' . urlencode($mid);
+			$profile_url = $board_url;
+
+			// 표시 이름
+			if (!empty($actor->display_name))
+			{
+				$name = $actor->display_name;
+			}
+			elseif ($module_info && !empty($module_info->browser_title))
+			{
+				$name = $module_info->browser_title;
+			}
+			elseif ($mid)
+			{
+				$name = $mid;
+			}
+			else
+			{
+				$name = $actor->preferred_username;
+			}
+
+			// 설명
+			if (!empty($actor->summary))
+			{
+				$summary = $actor->summary;
+			}
+			elseif ($module_info && !empty($module_info->description))
+			{
+				$summary = $module_info->description;
+			}
+
+			// 메타데이터: 게시판 링크
+			$attachment[] = [
+				'type' => 'PropertyValue',
+				'name' => 'Board',
+				'value' => '<a href="' . htmlspecialchars($board_url, ENT_QUOTES, 'UTF-8') . '" rel="me nofollow noopener noreferrer" target="_blank">' . htmlspecialchars($board_url, ENT_QUOTES, 'UTF-8') . '</a>',
+			];
 		}
-		elseif ($module_info && !empty($module_info->browser_title))
+		elseif ($actor_type === 'user' && $actor->member_srl)
 		{
-			$name = $module_info->browser_title;
-		}
-		elseif ($mid)
-		{
-			$name = $mid;
+			$ap_type = 'Person';
+			$member_info = \MemberModel::getMemberInfoByMemberSrl($actor->member_srl);
+			$profile_url = ActorModel::getSiteUrl() . '?act=dispMemberInfo&member_srl=' . $actor->member_srl;
+
+			// 표시 이름
+			if (!empty($actor->display_name))
+			{
+				$name = $actor->display_name;
+			}
+			elseif ($member_info && !empty($member_info->nick_name))
+			{
+				$name = $member_info->nick_name;
+			}
+			else
+			{
+				$name = $actor->preferred_username;
+			}
+
+			// 설명
+			if (!empty($actor->summary))
+			{
+				$summary = $actor->summary;
+			}
+
+			// 프로필 이미지 기본값: 회원 프로필 사진
+			if (empty($actor->icon_url) && $member_info && !empty($member_info->profile_image->src))
+			{
+				$actor->icon_url = $member_info->profile_image->src;
+			}
+
+			// 메타데이터: 프로필 링크
+			$attachment[] = [
+				'type' => 'PropertyValue',
+				'name' => 'Profile',
+				'value' => '<a href="' . htmlspecialchars($profile_url, ENT_QUOTES, 'UTF-8') . '" rel="me nofollow noopener noreferrer" target="_blank">' . htmlspecialchars($profile_url, ENT_QUOTES, 'UTF-8') . '</a>',
+			];
 		}
 		else
 		{
-			$name = $actor->preferred_username;
-		}
-
-		// 설명: 저장된 값 → 게시판 설명 순서로 사용
-		if (!empty($actor->summary))
-		{
-			$summary = $actor->summary;
-		}
-		elseif ($module_info && !empty($module_info->description))
-		{
-			$summary = $module_info->description;
-		}
-		else
-		{
-			$summary = '';
+			$name = $actor->display_name ?: $actor->preferred_username;
+			$summary = $actor->summary ?? '';
+			$profile_url = $actor_url;
 		}
 
 		$response = [
@@ -149,26 +208,24 @@ class Endpoint extends Base
 				['schema' => 'http://schema.org#', 'PropertyValue' => 'schema:PropertyValue', 'value' => 'schema:value'],
 			],
 			'id' => $actor_url,
-			'type' => 'Service',
+			'type' => $ap_type,
 			'preferredUsername' => $actor->preferred_username,
 			'name' => $name,
 			'summary' => $summary,
 			'inbox' => $inbox_url,
 			'outbox' => $outbox_url,
-			'url' => $board_url,
-			'attachment' => [
-				[
-					'type' => 'PropertyValue',
-					'name' => 'Board',
-					'value' => '<a href="' . htmlspecialchars($board_url, ENT_QUOTES, 'UTF-8') . '" rel="me nofollow noopener noreferrer" target="_blank">' . htmlspecialchars($board_url, ENT_QUOTES, 'UTF-8') . '</a>',
-				],
-			],
+			'url' => $profile_url,
 			'publicKey' => [
 				'id' => $actor_url . '#main-key',
 				'owner' => $actor_url,
 				'publicKeyPem' => $actor->public_key,
 			],
 		];
+
+		if (!empty($attachment))
+		{
+			$response['attachment'] = $attachment;
+		}
 
 		// 프로필 이미지가 설정된 경우 icon 필드 추가
 		if (!empty($actor->icon_url))

@@ -10,6 +10,13 @@
 
 <div class="x_page-header" style="margin-top:10px;">
 	<h2>{{ $lang->cmd_activitypub_actor_edit }} — @{{ $actor->preferred_username }}@{{ $site_domain }}</h2>
+	<p class="x_text-muted">
+		@if (($actor->actor_type ?? 'board') === 'board')
+			{{ $lang->cmd_activitypub_type_board }}
+		@else
+			{{ $lang->cmd_activitypub_type_user }}
+		@endif
+	</p>
 </div>
 
 <form class="x_form-horizontal" action="./" method="post">
@@ -29,7 +36,13 @@
 			<label class="x_control-label" for="display_name">{{ $lang->cmd_activitypub_display_name }}</label>
 			<div class="x_controls">
 				<input type="text" name="display_name" id="display_name" value="{{ $actor->display_name ?? '' }}" placeholder="{{ $default_name }}" style="width:300px;" />
-				<p class="x_help-block">{{ $lang->cmd_activitypub_display_name_desc }}</p>
+				<p class="x_help-block">
+					@if (($actor->actor_type ?? 'board') === 'board')
+						{{ $lang->cmd_activitypub_display_name_desc_board }}
+					@else
+						{{ $lang->cmd_activitypub_display_name_desc_user }}
+					@endif
+				</p>
 			</div>
 		</div>
 
@@ -44,10 +57,26 @@
 		<div class="x_control-group">
 			<label class="x_control-label" for="icon_url">{{ $lang->cmd_activitypub_icon_url }}</label>
 			<div class="x_controls">
-				<input type="url" name="icon_url" id="icon_url" value="{{ $actor->icon_url ?? '' }}" placeholder="https://example.com/image.png" style="width:400px;" />
-				<p class="x_help-block">{{ $lang->cmd_activitypub_icon_url_desc }}</p>
+				<input type="url" name="icon_url" id="icon_url" value="{{ $actor->icon_url ?? '' }}" placeholder="{{ $default_icon_url ?? 'https://example.com/image.png' }}" style="width:400px;" />
+				<p class="x_help-block">
+					@if (($actor->actor_type ?? 'board') === 'user')
+						{{ $lang->cmd_activitypub_icon_url_desc_user }}
+					@else
+						{{ $lang->cmd_activitypub_icon_url_desc }}
+					@endif
+				</p>
 			</div>
 		</div>
+
+		@if (($actor->actor_type ?? 'board') === 'user')
+		<div class="x_control-group">
+			<label class="x_control-label" for="filter_mids">{{ $lang->cmd_activitypub_filter_mids }}</label>
+			<div class="x_controls">
+				<textarea name="filter_mids" id="filter_mids" rows="3" cols="60" placeholder="board1, board2">{{ $actor->filter_mids_str ?? '' }}</textarea>
+				<p class="x_help-block">{{ $lang->cmd_activitypub_filter_mids_desc }}</p>
+			</div>
+		</div>
+		@endif
 	</section>
 
 	<div class="btnArea x_clearfix">

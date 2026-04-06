@@ -6,8 +6,11 @@
 		<!-- 관리자 액션 -->
 		<action name="dispActivitypubAdminConfig" class="Controllers\Admin" menu-name="activitypub" admin-index="true" />
 		<action name="procActivitypubAdminInsertConfig" class="Controllers\Admin" />
+		<action name="dispActivitypubAdminCreateActor" class="Controllers\Admin" />
+		<action name="procActivitypubAdminCreateActor" class="Controllers\Admin" />
 		<action name="dispActivitypubAdminActorEdit" class="Controllers\Admin" />
 		<action name="procActivitypubAdminUpdateActorProfile" class="Controllers\Admin" />
+		<action name="procActivitypubAdminDeleteActor" class="Controllers\Admin" />
 		<!-- ActivityPub 엔드포인트 -->
 		<action name="dispActivitypubWebfinger" class="Controllers\Endpoint" />
 		<action name="dispActivitypubActor" class="Controllers\Endpoint" />
