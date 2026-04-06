@@ -336,7 +336,7 @@ class EventHandlers extends Base
 		$html_content .= '<p><a href="' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
 
 		$published = date('c');
-		$note_id = $actor_url . '/note/' . $document_srl;
+		$note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
 		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
 
 		$note = Type::create('Note', [
@@ -351,7 +351,7 @@ class EventHandlers extends Base
 
 		$activity = Type::create('Create', [
 			'@context' => 'https://www.w3.org/ns/activitystreams',
-			'id' => $note_id . '/activity',
+			'id' => $note_id . '&type=activity',
 			'actor' => $actor_url,
 			'published' => $published,
 			'to' => ['https://www.w3.org/ns/activitystreams#Public'],
@@ -399,8 +399,8 @@ class EventHandlers extends Base
 		$html_content .= '<p><a href="' . htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
 
 		$published = date('c');
-		$note_id = $actor_url . '/comment/' . $comment_srl;
-		$parent_note_id = $actor_url . '/note/' . $document_srl;
+		$note_id = ActorModel::getCommentNoteUrl($actor->preferred_username, $comment_srl);
+		$parent_note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
 		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
 
 		$note = Type::create('Note', [
@@ -416,7 +416,7 @@ class EventHandlers extends Base
 
 		$activity = Type::create('Create', [
 			'@context' => 'https://www.w3.org/ns/activitystreams',
-			'id' => $note_id . '/activity',
+			'id' => $note_id . '&type=activity',
 			'actor' => $actor_url,
 			'published' => $published,
 			'to' => ['https://www.w3.org/ns/activitystreams#Public'],

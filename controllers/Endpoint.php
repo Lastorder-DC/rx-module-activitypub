@@ -369,7 +369,7 @@ class Endpoint extends Base
 			$html_content .= '<p><a href="' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
 
 			$published = self::formatRegdateToIso($doc->regdate ?? '');
-			$note_id = $actor_url . '/note/' . $document_srl;
+			$note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
 
 			$note = Type::create('Note', [
 				'id' => $note_id,
@@ -388,7 +388,7 @@ class Endpoint extends Base
 			}
 
 			$activity = Type::create('Create', [
-				'id' => $note_id . '/activity',
+				'id' => $note_id . '&type=activity',
 				'actor' => $actor_url,
 				'published' => $published,
 				'to' => ['https://www.w3.org/ns/activitystreams#Public'],
@@ -420,6 +420,194 @@ class Endpoint extends Base
 
 		$outboxPage = Type::create('OrderedCollectionPage', $page_data);
 		$this->sendActivityResponse($outboxPage);
+	}
+
+	/**
+	 * Note 엔드포인트
+	 * 개별 게시물(document) 또는 댓글(comment)을 Note 객체로 반환
+	 */
+	public function dispActivitypubNote()
+	{
+		// Authorized Fetch 모드일 경우 HTTP Signature 검증
+		if (!$this->checkAuthorizedFetch())
+		{
+			return;
+		}
+
+		$preferred_username = Context::get('preferred_username');
+		if (!$preferred_username)
+		{
+			$this->sendJsonResponse(['error' => 'Missing username'], 400);
+			return;
+		}
+
+		$actor = ActorModel::getActiveActorByPreferredUsername($preferred_username);
+		if (!$actor)
+		{
+			$this->sendJsonResponse(['error' => 'Unknown user'], 404);
+			return;
+		}
+
+		$document_srl = intval(Context::get('document_srl'));
+		$comment_srl = intval(Context::get('comment_srl'));
+
+		if ($comment_srl > 0)
+		{
+			$note_data = $this->buildCommentNoteData($actor, $comment_srl);
+		}
+		elseif ($document_srl > 0)
+		{
+			$note_data = $this->buildDocumentNoteData($actor, $document_srl);
+		}
+		else
+		{
+			$this->sendJsonResponse(['error' => 'Missing document_srl or comment_srl'], 400);
+			return;
+		}
+
+		if (!$note_data)
+		{
+			$this->sendJsonResponse(['error' => 'Not found'], 404);
+			return;
+		}
+
+		$note = Type::create('Note', $note_data);
+		$this->sendActivityResponse($note);
+	}
+
+	/**
+	 * 게시물 Note 데이터 생성
+	 *
+	 * @param object $actor
+	 * @param int $document_srl
+	 * @return array|null Note 데이터 또는 접근 불가 시 null
+	 */
+	protected function buildDocumentNoteData($actor, $document_srl)
+	{
+		$oDocument = \DocumentModel::getDocument($document_srl);
+		if (!$oDocument || !$oDocument->document_srl)
+		{
+			return null;
+		}
+
+		// 공개 글만 처리
+		$status = $oDocument->status ?? '';
+		if ($status !== 'PUBLIC' && $status !== '')
+		{
+			return null;
+		}
+
+		// 비공개 게시판 제외
+		if (!ActorModel::isModulePubliclyAccessible($oDocument->module_srl))
+		{
+			return null;
+		}
+
+		$site_url = ActorModel::getSiteUrl();
+		$mid = ModuleModel::getMidByModuleSrl($oDocument->module_srl);
+		$document_url = $site_url . '?mid=' . urlencode($mid) . '&document_srl=' . $document_srl;
+
+		$title = $oDocument->title ?? '';
+		$content_text = $this->truncateContent($oDocument->content ?? '');
+
+		$html_content = '<p><strong>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</strong></p>';
+		$html_content .= '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
+		$html_content .= '<p><a href="' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
+
+		$note_data = $this->buildBaseNoteData($actor, [
+			'id' => ActorModel::getNoteUrl($actor->preferred_username, $document_srl),
+			'published' => self::formatRegdateToIso($oDocument->regdate ?? ''),
+			'content' => $html_content,
+			'url' => $document_url,
+		]);
+
+		// 수정일이 있고 등록일과 다르면 updated 필드 추가
+		if (!empty($oDocument->last_update) && ($oDocument->last_update ?? '') !== ($oDocument->regdate ?? ''))
+		{
+			$note_data['updated'] = self::formatRegdateToIso($oDocument->last_update);
+		}
+
+		return $note_data;
+	}
+
+	/**
+	 * 댓글 Note 데이터 생성
+	 *
+	 * @param object $actor
+	 * @param int $comment_srl
+	 * @return array|null Note 데이터 또는 접근 불가 시 null
+	 */
+	protected function buildCommentNoteData($actor, $comment_srl)
+	{
+		$comment = \CommentModel::getComment($comment_srl);
+		if (!$comment || !$comment->comment_srl)
+		{
+			return null;
+		}
+
+		// 비밀 댓글 제외
+		if (($comment->is_secret ?? '') === 'Y')
+		{
+			return null;
+		}
+
+		// 비공개 게시판 제외
+		if (!ActorModel::isModulePubliclyAccessible($comment->module_srl))
+		{
+			return null;
+		}
+
+		$site_url = ActorModel::getSiteUrl();
+		$document_srl = $comment->document_srl;
+		$mid = ModuleModel::getMidByModuleSrl($comment->module_srl);
+		$document_url = $site_url . '?mid=' . urlencode($mid) . '&document_srl=' . $document_srl;
+		$comment_url = $document_url . '#comment_' . $comment_srl;
+
+		$content_text = $this->truncateContent($comment->content ?? '');
+
+		$html_content = '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
+		$html_content .= '<p><a href="' . htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
+
+		return $this->buildBaseNoteData($actor, [
+			'id' => ActorModel::getCommentNoteUrl($actor->preferred_username, $comment_srl),
+			'published' => self::formatRegdateToIso($comment->regdate ?? ''),
+			'content' => $html_content,
+			'url' => $comment_url,
+			'inReplyTo' => ActorModel::getNoteUrl($actor->preferred_username, $document_srl),
+		]);
+	}
+
+	/**
+	 * Note 공통 데이터 생성
+	 *
+	 * @param object $actor
+	 * @param array $extra 개별 Note 필드 (id, published, content, url 등)
+	 * @return array
+	 */
+	protected function buildBaseNoteData($actor, array $extra)
+	{
+		return array_merge([
+			'@context' => 'https://www.w3.org/ns/activitystreams',
+			'attributedTo' => ActorModel::getActorUrl($actor->preferred_username),
+			'to' => ['https://www.w3.org/ns/activitystreams#Public'],
+			'cc' => [ActorModel::getFollowersUrl($actor->preferred_username)],
+		], $extra);
+	}
+
+	/**
+	 * HTML 컨텐츠에서 태그를 제거하고 500자로 잘라내기
+	 *
+	 * @param string $html
+	 * @return string
+	 */
+	protected function truncateContent($html)
+	{
+		$text = strip_tags($html);
+		if (mb_strlen($text) > 500)
+		{
+			$text = mb_substr($text, 0, 497) . '...';
+		}
+		return $text;
 	}
 
 	/**
