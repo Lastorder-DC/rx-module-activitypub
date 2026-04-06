@@ -24,6 +24,19 @@
 		<h2>{{ $lang->cmd_activitypub_module_target }}</h2>
 
 		<div class="x_control-group">
+			<label class="x_control-label">{{ $lang->cmd_activitypub_send_comments }}</label>
+			<div class="x_controls">
+				<label class="x_inline">
+					<input type="radio" name="send_comments" value="Y" @checked(($config->send_comments ?? 'Y') === 'Y') /> {{ $lang->cmd_yes }}
+				</label>
+				<label class="x_inline">
+					<input type="radio" name="send_comments" value="N" @checked(($config->send_comments ?? 'Y') === 'N') /> {{ $lang->cmd_no }}
+				</label>
+				<p class="x_help-block">{{ $lang->cmd_activitypub_send_comments_desc }}</p>
+			</div>
+		</div>
+
+		<div class="x_control-group">
 			<label class="x_control-label">{{ $lang->cmd_activitypub_target_mode }}</label>
 			<div class="x_controls">
 				<label class="x_inline">

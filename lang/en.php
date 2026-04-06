@@ -15,6 +15,7 @@ $lang->cmd_activitypub_actor_mid = 'Linked Board mid';
 $lang->cmd_activitypub_actor_address = 'ActivityPub Address';
 $lang->cmd_activitypub_actor_regdate = 'Registration Date';
 $lang->cmd_activitypub_actor_immutable_notice = '※ The ActivityPub ID (preferred_username) cannot be changed once set. This ID is permanently linked to the module_srl.';
-$lang->msg_activitypub_actor_already_exists = 'An ActivityPub Actor for this module already exists.';
+$lang->cmd_activitypub_send_comments = 'Send Comments via ActivityPub';
+$lang->cmd_activitypub_send_comments_desc = 'Set whether to publish comments on boards via ActivityPub.'; = 'An ActivityPub Actor for this module already exists.';
 $lang->msg_activitypub_username_already_exists = 'An ActivityPub Actor with the same name already exists.';
 $lang->msg_activitypub_key_generation_failed = 'Failed to generate RSA key pair.';

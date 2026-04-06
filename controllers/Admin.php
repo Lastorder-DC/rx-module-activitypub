@@ -88,6 +88,9 @@ class Admin extends Base
 		}
 		$config->target_mids = $target_mids;
 
+		// 댓글 전송 여부 설정
+		$config->send_comments = ($vars->send_comments === 'Y') ? 'Y' : 'N';
+
 		// 설정에 포함된 mid에 대해 Actor 자동 생성
 		if ($config->target_mode === 'include')
 		{
