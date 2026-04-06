@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<query id="insertFollower" action="insert">
+	<tables>
+		<table name="activitypub_followers" />
+	</tables>
+	<columns>
+		<column name="follower_srl" var="follower_srl" filter="number" notnull="notnull" />
+		<column name="actor_srl" var="actor_srl" filter="number" notnull="notnull" />
+		<column name="follower_actor_url" var="follower_actor_url" notnull="notnull" />
+		<column name="follower_inbox_url" var="follower_inbox_url" notnull="notnull" />
+		<column name="follower_shared_inbox_url" var="follower_shared_inbox_url" />
+		<column name="regdate" var="regdate" />
+	</columns>
+</query>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module version="0.2">
+	<title xml:lang="ko">ActivityPub 연동</title>
+	<title xml:lang="en">ActivityPub Integration</title>
+	<description xml:lang="ko">라이믹스 게시판을 ActivityPub으로 연동하는 모듈입니다. 게시판의 공개 게시물을 ActivityPub 프로토콜을 통해 발행합니다.</description>
+	<description xml:lang="en">A module that integrates Rhymix boards with ActivityPub. Publishes public board posts via the ActivityPub protocol.</description>
+	<version>1.0.0</version>
+	<date>2026-04-06</date>
+	<category>service</category>
+	<author email_address="lastorder@lastorder.xyz" link="https://lastorder.xyz">
+		<name xml:lang="ko">Lastorder-DC</name>
+		<name xml:lang="en">Lastorder-DC</name>
+	</author>
+</module>

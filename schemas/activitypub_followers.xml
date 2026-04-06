@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<table name="activitypub_followers">
+	<column name="follower_srl" type="number" size="11" notnull="notnull" primary_key="primary_key" />
+	<column name="actor_srl" type="number" size="11" notnull="notnull" index="idx_actor_srl" />
+	<column name="follower_actor_url" type="varchar" size="500" notnull="notnull" />
+	<column name="follower_inbox_url" type="varchar" size="500" notnull="notnull" />
+	<column name="follower_shared_inbox_url" type="varchar" size="500" />
+	<column name="regdate" type="date" index="idx_regdate" />
+</table>

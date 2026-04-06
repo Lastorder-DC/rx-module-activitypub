@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<query id="getActorByPreferredUsername" action="select">
+	<tables>
+		<table name="activitypub_actors" />
+	</tables>
+	<columns>
+		<column name="*" />
+	</columns>
+	<conditions>
+		<condition operation="equal" column="preferred_username" var="preferred_username" notnull="notnull" />
+	</conditions>
+</query>

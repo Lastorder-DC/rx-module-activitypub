@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<query id="insertActor" action="insert">
+	<tables>
+		<table name="activitypub_actors" />
+	</tables>
+	<columns>
+		<column name="actor_srl" var="actor_srl" filter="number" notnull="notnull" />
+		<column name="module_srl" var="module_srl" filter="number" notnull="notnull" />
+		<column name="preferred_username" var="preferred_username" notnull="notnull" />
+		<column name="public_key" var="public_key" notnull="notnull" />
+		<column name="private_key" var="private_key" notnull="notnull" />
+		<column name="regdate" var="regdate" />
+	</columns>
+</query>
