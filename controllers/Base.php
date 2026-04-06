@@ -58,6 +58,7 @@ class Base extends \ModuleObject
 	{
 		$maxLength = \Rhymix\Modules\Activitypub\Models\Config::getContentMaxLength();
 		$text = strip_tags($html);
+		$text = ltrim($text, "\n\r");
 		if (mb_strlen($text) > $maxLength)
 		{
 			$text = mb_substr($text, 0, $maxLength - 3) . '...';
@@ -81,6 +82,64 @@ class Base extends \ModuleObject
 			}
 		}
 		return '작성자';
+	}
+
+	/**
+	 * 게시물 Note의 HTML 컨텐츠와 summary를 생성
+	 *
+	 * @param string $title 게시물 제목
+	 * @param string $content_text strip_tags 및 truncate 처리된 본문 텍스트
+	 * @param string $nick_name 작성자 닉네임
+	 * @param string $document_url 게시물 URL
+	 * @param object $actor Actor 객체
+	 * @return array ['content' => string, 'summary' => string|null]
+	 */
+	public static function buildDocumentNoteContent($title, $content_text, $nick_name, $document_url, $actor)
+	{
+		$include_content = \Rhymix\Modules\Activitypub\Models\Config::getIncludeContent();
+		$escaped_title = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
+		$escaped_url = htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8');
+		$show_author = $nick_name && ($actor->actor_type ?? 'board') === 'board';
+		$escaped_nick = $show_author ? htmlspecialchars($nick_name, ENT_QUOTES, 'UTF-8') : '';
+
+		$result = ['content' => '', 'summary' => null];
+
+		if ($include_content === 'cw')
+		{
+			// CW 모드: summary에 제목+작성자, content에 본문+링크
+			$summary = $title;
+			if ($show_author)
+			{
+				$summary .= ' - ' . self::getAuthorLabel() . ': ' . $nick_name;
+			}
+			$result['summary'] = $summary;
+
+			$html_content = '';
+			if ($content_text !== '')
+			{
+				$html_content .= '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
+			}
+			$html_content .= '<p><a href="' . $escaped_url . '">' . $escaped_url . '</a></p>';
+			$result['content'] = $html_content;
+		}
+		else
+		{
+			// 일반 모드 (N 또는 Y): content에 제목+작성자(+본문)+링크
+			$html_content = '<p><strong>' . $escaped_title . '</strong>';
+			if ($show_author)
+			{
+				$html_content .= '<br />' . self::getAuthorLabel() . ': ' . $escaped_nick;
+			}
+			$html_content .= '</p>';
+			if ($include_content === 'Y' && $content_text !== '')
+			{
+				$html_content .= '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
+			}
+			$html_content .= '<p><a href="' . $escaped_url . '">' . $escaped_url . '</a></p>';
+			$result['content'] = $html_content;
+		}
+
+		return $result;
 	}
 
 	/**

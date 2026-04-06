@@ -402,19 +402,13 @@ class Endpoint extends Base
 
 			$content_text = self::truncateContent($content);
 
-			$html_content = '<p><strong>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</strong>';
-			if ($nick_name && ($actor->actor_type ?? 'board') === 'board')
-			{
-				$html_content .= '<br /><strong>' . self::getAuthorLabel() . ': ' . htmlspecialchars($nick_name, ENT_QUOTES, 'UTF-8') . '</strong>';
-			}
-			$html_content .= '</p>';
-			$html_content .= '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
-			$html_content .= '<p><a href="' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
+			$noteContent = self::buildDocumentNoteContent($title, $content_text, $nick_name, $document_url, $actor);
+			$html_content = $noteContent['content'];
 
 			$published = self::formatRegdateToIso($doc->regdate ?? '');
 			$note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
 
-			$note = Type::create('Note', [
+			$note_create_data = [
 				'id' => $note_id,
 				'published' => $published,
 				'attributedTo' => $actor_url,
@@ -422,7 +416,13 @@ class Endpoint extends Base
 				'url' => $document_url,
 				'to' => $note_to,
 				'cc' => $note_cc,
-			]);
+			];
+			if ($noteContent['summary'] !== null)
+			{
+				$note_create_data['summary'] = $noteContent['summary'];
+			}
+
+			$note = Type::create('Note', $note_create_data);
 
 			// 수정일이 있고 등록일과 다르면 updated 필드 추가
 			if (!empty($doc->last_update) && ($doc->last_update ?? '') !== ($doc->regdate ?? ''))
@@ -587,21 +587,21 @@ class Endpoint extends Base
 		$nick_name = $oDocument->nick_name ?? '';
 		$content_text = self::truncateContent($oDocument->content ?? '');
 
-		$html_content = '<p><strong>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</strong>';
-		if ($nick_name && ($actor->actor_type ?? 'board') === 'board')
-		{
-			$html_content .= '<br /><strong>' . self::getAuthorLabel() . ': ' . htmlspecialchars($nick_name, ENT_QUOTES, 'UTF-8') . '</strong>';
-		}
-		$html_content .= '</p>';
-		$html_content .= '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
-		$html_content .= '<p><a href="' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
+		$noteContent = self::buildDocumentNoteContent($title, $content_text, $nick_name, $document_url, $actor);
+		$html_content = $noteContent['content'];
 
-		$note_data = $this->buildBaseNoteData($actor, [
+		$note_base_data = [
 			'id' => ActorModel::getNoteUrl($actor->preferred_username, $document_srl),
 			'published' => self::formatRegdateToIso($oDocument->regdate ?? ''),
 			'content' => $html_content,
 			'url' => $document_url,
-		]);
+		];
+		if ($noteContent['summary'] !== null)
+		{
+			$note_base_data['summary'] = $noteContent['summary'];
+		}
+
+		$note_data = $this->buildBaseNoteData($actor, $note_base_data);
 
 		// 수정일이 있고 등록일과 다르면 updated 필드 추가
 		if (!empty($oDocument->last_update) && ($oDocument->last_update ?? '') !== ($oDocument->regdate ?? ''))
