@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<module>
+	<grants>
+	</grants>
+	<actions>
+		<!-- 관리자 액션 -->
+		<action name="dispActivitypubAdminConfig" class="Controllers\Admin" menu-name="activitypub" admin-index="true" />
+		<action name="procActivitypubAdminInsertConfig" class="Controllers\Admin" />
+		<action name="dispActivitypubAdminCreateActor" class="Controllers\Admin" />
+		<action name="procActivitypubAdminCreateActor" class="Controllers\Admin" />
+		<action name="dispActivitypubAdminActorEdit" class="Controllers\Admin" />
+		<action name="procActivitypubAdminUpdateActorProfile" class="Controllers\Admin" />
+		<action name="procActivitypubAdminDeleteActor" class="Controllers\Admin" />
+		<!-- ActivityPub 엔드포인트 -->
+		<action name="dispActivitypubWebfinger" class="Controllers\Endpoint" />
+		<action name="dispActivitypubActor" class="Controllers\Endpoint" />
+		<action name="dispActivitypubOutbox" class="Controllers\Endpoint" />
+		<action name="procActivitypubInbox" class="Controllers\Endpoint" />
+	</actions>
+	<!-- 이벤트 핸들러 (트리거) 선언 -->
+	<eventHandlers>
+		<eventHandler after="document.publishDocument" class="Controllers\EventHandlers" method="afterPublishDocument" />
+		<eventHandler after="comment.insertComment" class="Controllers\EventHandlers" method="afterInsertComment" />
+		<eventHandler before="moduleHandler.proc" class="Controllers\EventHandlers" method="beforeModuleHandlerProc" />
+	</eventHandlers>
+	<menus>
+		<menu name="activitypub" type="all">
+			<title xml:lang="ko">ActivityPub 연동</title>
+			<title xml:lang="en">ActivityPub Integration</title>
+		</menu>
+	</menus>
+</module>

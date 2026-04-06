@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<query id="getActorList" action="select">
+	<tables>
+		<table name="activitypub_actors" />
+	</tables>
+	<columns>
+		<column name="*" />
+	</columns>
+	<navigation>
+		<index var="sort_index" default="actor_srl" order="desc" />
+		<list_count var="list_count" default="20" />
+		<page_count var="page_count" default="10" />
+		<page var="page" default="1" />
+	</navigation>
+</query>

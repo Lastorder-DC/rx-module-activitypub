@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<query id="getActorByModuleSrl" action="select">
+	<tables>
+		<table name="activitypub_actors" />
+	</tables>
+	<columns>
+		<column name="*" />
+	</columns>
+	<conditions>
+		<condition operation="equal" column="module_srl" var="module_srl" filter="number" notnull="notnull" />
+	</conditions>
+</query>
