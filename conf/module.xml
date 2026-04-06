@@ -28,7 +28,13 @@
 	<!-- 이벤트 핸들러 (트리거) 선언 -->
 	<eventHandlers>
 		<eventHandler after="document.publishDocument" class="Controllers\EventHandlers" method="afterPublishDocument" />
+		<eventHandler after="document.updateDocument" class="Controllers\EventHandlers" method="afterUpdateDocument" />
+		<eventHandler before="document.deleteDocument" class="Controllers\EventHandlers" method="beforeDeleteDocument" />
+		<eventHandler before="document.moveDocumentToTrash" class="Controllers\EventHandlers" method="beforeMoveDocumentToTrash" />
 		<eventHandler after="comment.insertComment" class="Controllers\EventHandlers" method="afterInsertComment" />
+		<eventHandler after="comment.updateComment" class="Controllers\EventHandlers" method="afterUpdateComment" />
+		<eventHandler before="comment.deleteComment" class="Controllers\EventHandlers" method="beforeDeleteComment" />
+		<eventHandler before="comment.moveCommentToTrash" class="Controllers\EventHandlers" method="beforeMoveCommentToTrash" />
 		<eventHandler before="moduleHandler.proc" class="Controllers\EventHandlers" method="beforeModuleHandlerProc" />
 	</eventHandlers>
 	<menus>

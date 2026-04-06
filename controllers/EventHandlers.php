@@ -146,6 +146,320 @@ class EventHandlers extends Base
 	}
 
 	/**
+	 * document.updateDocument after 트리거
+	 * 게시물이 수정될 때 ActivityPub으로 Update 또는 Delete 알림
+	 *
+	 * @param object $obj
+	 */
+	public function afterUpdateDocument($obj)
+	{
+		if (!$obj || !isset($obj->document_srl))
+		{
+			return;
+		}
+
+		// 수정 후 상태가 PUBLIC이 아닌 경우 Delete 전송
+		$status = $obj->status ?? '';
+		if ($status !== 'PUBLIC' && $status !== '')
+		{
+			$this->sendDeleteDocumentActivity($obj);
+			return;
+		}
+
+		// 비로그인 상태로 접속 불가능한 게시판의 게시물은 AP로 발행하지 않음
+		$module_srl = $obj->module_srl ?? 0;
+		if (!$module_srl || !ActorModel::isModulePubliclyAccessible($module_srl))
+		{
+			return;
+		}
+
+		// 해당 게시물에 대한 모든 Actor 가져오기 (게시판 Actor + 유저 Actor)
+		$member_srl = $obj->member_srl ?? 0;
+		$actors = ActorModel::getActorsForDocument($module_srl, $member_srl);
+		if (empty($actors))
+		{
+			return;
+		}
+
+		// 각 Actor를 통해 팔로워에게 Update 전송
+		foreach ($actors as $actor)
+		{
+			if (self::isQueueAvailable())
+			{
+				$args = new \stdClass;
+				$args->actor_srl = $actor->actor_srl;
+				$args->document_srl = $obj->document_srl;
+				$args->module_srl = $module_srl;
+				$args->title = $obj->title ?? '';
+				$args->content = $obj->content ?? '';
+				$args->activity_type = 'Update';
+
+				\Rhymix\Framework\Queue::addTask(
+					'Rhymix\\Modules\\Activitypub\\Controllers\\EventHandlers::processDocumentDeliveryTask',
+					$args
+				);
+			}
+			else
+			{
+				self::deliverDocumentUpdateToFollowers($actor, $obj);
+			}
+		}
+	}
+
+	/**
+	 * document.deleteDocument before 트리거
+	 * 게시물이 삭제될 때 ActivityPub으로 Delete 알림
+	 *
+	 * @param object $obj
+	 */
+	public function beforeDeleteDocument($obj)
+	{
+		$this->sendDeleteDocumentActivity($obj);
+	}
+
+	/**
+	 * document.moveDocumentToTrash before 트리거
+	 * 게시물이 휴지통으로 이동될 때 ActivityPub으로 Delete 알림
+	 *
+	 * @param object $obj
+	 */
+	public function beforeMoveDocumentToTrash($obj)
+	{
+		$this->sendDeleteDocumentActivity($obj);
+	}
+
+	/**
+	 * 게시물 Delete Activity 전송 공통 처리
+	 *
+	 * @param object $obj
+	 */
+	protected function sendDeleteDocumentActivity($obj)
+	{
+		if (!$obj || !isset($obj->document_srl))
+		{
+			return;
+		}
+
+		// 트리거에 module_srl/member_srl이 없을 수 있으므로 DB에서 조회
+		$document_srl = $obj->document_srl;
+		$module_srl = $obj->module_srl ?? 0;
+		$member_srl = $obj->member_srl ?? 0;
+
+		if (!$module_srl || !$member_srl)
+		{
+			$oDocument = \DocumentModel::getDocument($document_srl);
+			if ($oDocument && $oDocument->document_srl)
+			{
+				$module_srl = $module_srl ?: ($oDocument->module_srl ?? 0);
+				$member_srl = $member_srl ?: ($oDocument->member_srl ?? 0);
+			}
+		}
+
+		if (!$module_srl)
+		{
+			return;
+		}
+
+		$actors = ActorModel::getActorsForDocument($module_srl, $member_srl);
+		if (empty($actors))
+		{
+			return;
+		}
+
+		foreach ($actors as $actor)
+		{
+			if (self::isQueueAvailable())
+			{
+				$args = new \stdClass;
+				$args->actor_srl = $actor->actor_srl;
+				$args->document_srl = $document_srl;
+				$args->module_srl = $module_srl;
+				$args->activity_type = 'Delete';
+
+				\Rhymix\Framework\Queue::addTask(
+					'Rhymix\\Modules\\Activitypub\\Controllers\\EventHandlers::processDocumentDeliveryTask',
+					$args
+				);
+			}
+			else
+			{
+				self::deliverDocumentDeleteToFollowers($actor, $document_srl);
+			}
+		}
+	}
+
+	/**
+	 * comment.updateComment after 트리거
+	 * 댓글이 수정될 때 ActivityPub으로 Update 알림
+	 *
+	 * @param object $obj
+	 */
+	public function afterUpdateComment($obj)
+	{
+		if (!$obj || !isset($obj->comment_srl))
+		{
+			return;
+		}
+
+		// 댓글 AP 전송이 비활성화된 경우 제외
+		$config = ConfigModel::getConfig();
+		if (($config->send_comments ?? 'Y') !== 'Y')
+		{
+			return;
+		}
+
+		// 비밀 댓글로 변경된 경우 Delete 전송
+		if (isset($obj->is_secret) && $obj->is_secret === 'Y')
+		{
+			$this->sendDeleteCommentActivity($obj);
+			return;
+		}
+
+		$module_srl = $obj->module_srl ?? 0;
+		$document_srl = $obj->document_srl ?? 0;
+
+		// 트리거에 module_srl/document_srl이 없을 수 있으므로 DB에서 조회
+		if (!$module_srl || !$document_srl)
+		{
+			$comment = \CommentModel::getComment($obj->comment_srl);
+			if ($comment && $comment->comment_srl)
+			{
+				$module_srl = $module_srl ?: ($comment->module_srl ?? 0);
+				$document_srl = $document_srl ?: ($comment->document_srl ?? 0);
+			}
+		}
+
+		if (!$module_srl)
+		{
+			return;
+		}
+
+		// 비로그인 상태로 접속 불가능한 게시판의 댓글은 AP로 발행하지 않음
+		if (!ActorModel::isModulePubliclyAccessible($module_srl))
+		{
+			return;
+		}
+
+		$member_srl = $obj->member_srl ?? 0;
+		$actors = ActorModel::getActorsForDocument($module_srl, $member_srl);
+		if (empty($actors))
+		{
+			return;
+		}
+
+		foreach ($actors as $actor)
+		{
+			if (self::isQueueAvailable())
+			{
+				$args = new \stdClass;
+				$args->actor_srl = $actor->actor_srl;
+				$args->comment_srl = $obj->comment_srl;
+				$args->document_srl = $document_srl;
+				$args->module_srl = $module_srl;
+				$args->content = $obj->content ?? '';
+				$args->activity_type = 'Update';
+
+				\Rhymix\Framework\Queue::addTask(
+					'Rhymix\\Modules\\Activitypub\\Controllers\\EventHandlers::processCommentDeliveryTask',
+					$args
+				);
+			}
+			else
+			{
+				self::deliverCommentUpdateToFollowers($actor, $obj);
+			}
+		}
+	}
+
+	/**
+	 * comment.deleteComment before 트리거
+	 * 댓글이 삭제될 때 ActivityPub으로 Delete 알림
+	 *
+	 * @param object $obj
+	 */
+	public function beforeDeleteComment($obj)
+	{
+		$this->sendDeleteCommentActivity($obj);
+	}
+
+	/**
+	 * comment.moveCommentToTrash before 트리거
+	 * 댓글이 휴지통으로 이동될 때 ActivityPub으로 Delete 알림
+	 *
+	 * @param object $obj
+	 */
+	public function beforeMoveCommentToTrash($obj)
+	{
+		$this->sendDeleteCommentActivity($obj);
+	}
+
+	/**
+	 * 댓글 Delete Activity 전송 공통 처리
+	 *
+	 * @param object $obj
+	 */
+	protected function sendDeleteCommentActivity($obj)
+	{
+		if (!$obj || !isset($obj->comment_srl))
+		{
+			return;
+		}
+
+		// 댓글 AP 전송이 비활성화된 경우 제외
+		$config = ConfigModel::getConfig();
+		if (($config->send_comments ?? 'Y') !== 'Y')
+		{
+			return;
+		}
+
+		$comment_srl = $obj->comment_srl;
+		$module_srl = $obj->module_srl ?? 0;
+		$member_srl = $obj->member_srl ?? 0;
+
+		if (!$module_srl || !$member_srl)
+		{
+			$comment = \CommentModel::getComment($comment_srl);
+			if ($comment && $comment->comment_srl)
+			{
+				$module_srl = $module_srl ?: ($comment->module_srl ?? 0);
+				$member_srl = $member_srl ?: ($comment->member_srl ?? 0);
+			}
+		}
+
+		if (!$module_srl)
+		{
+			return;
+		}
+
+		$actors = ActorModel::getActorsForDocument($module_srl, $member_srl);
+		if (empty($actors))
+		{
+			return;
+		}
+
+		foreach ($actors as $actor)
+		{
+			if (self::isQueueAvailable())
+			{
+				$args = new \stdClass;
+				$args->actor_srl = $actor->actor_srl;
+				$args->comment_srl = $comment_srl;
+				$args->module_srl = $module_srl;
+				$args->activity_type = 'Delete';
+
+				\Rhymix\Framework\Queue::addTask(
+					'Rhymix\\Modules\\Activitypub\\Controllers\\EventHandlers::processCommentDeliveryTask',
+					$args
+				);
+			}
+			else
+			{
+				self::deliverCommentDeleteToFollowers($actor, $comment_srl);
+			}
+		}
+	}
+
+	/**
 	 * moduleHandler.proc before 트리거
 	 * WebFinger 요청을 가로채서 처리
 	 *
@@ -253,7 +567,7 @@ class EventHandlers extends Base
 	 */
 	public static function processDocumentDeliveryTask($args, $options = null)
 	{
-		self::debugLog('[processDocumentDeliveryTask] Called with actor_srl=' . ($args->actor_srl ?? 'null') . ', document_srl=' . ($args->document_srl ?? 'null') . ', module_srl=' . ($args->module_srl ?? 'null'));
+		self::debugLog('[processDocumentDeliveryTask] Called with actor_srl=' . ($args->actor_srl ?? 'null') . ', document_srl=' . ($args->document_srl ?? 'null') . ', module_srl=' . ($args->module_srl ?? 'null') . ', activity_type=' . ($args->activity_type ?? 'Create'));
 
 		if (!$args || !isset($args->actor_srl) || !isset($args->document_srl))
 		{
@@ -268,8 +582,21 @@ class EventHandlers extends Base
 			return;
 		}
 
-		self::debugLog('[processDocumentDeliveryTask] Delivering document_srl=' . $args->document_srl . ' via actor=' . $actor->preferred_username);
-		self::deliverDocumentToFollowers($actor, $args);
+		$activity_type = $args->activity_type ?? 'Create';
+		self::debugLog('[processDocumentDeliveryTask] Delivering document_srl=' . $args->document_srl . ' via actor=' . $actor->preferred_username . ' type=' . $activity_type);
+
+		switch ($activity_type)
+		{
+			case 'Update':
+				self::deliverDocumentUpdateToFollowers($actor, $args);
+				break;
+			case 'Delete':
+				self::deliverDocumentDeleteToFollowers($actor, $args->document_srl);
+				break;
+			default:
+				self::deliverDocumentToFollowers($actor, $args);
+				break;
+		}
 	}
 
 	/**
@@ -280,7 +607,7 @@ class EventHandlers extends Base
 	 */
 	public static function processCommentDeliveryTask($args, $options = null)
 	{
-		self::debugLog('[processCommentDeliveryTask] Called with actor_srl=' . ($args->actor_srl ?? 'null') . ', comment_srl=' . ($args->comment_srl ?? 'null') . ', document_srl=' . ($args->document_srl ?? 'null') . ', module_srl=' . ($args->module_srl ?? 'null'));
+		self::debugLog('[processCommentDeliveryTask] Called with actor_srl=' . ($args->actor_srl ?? 'null') . ', comment_srl=' . ($args->comment_srl ?? 'null') . ', document_srl=' . ($args->document_srl ?? 'null') . ', module_srl=' . ($args->module_srl ?? 'null') . ', activity_type=' . ($args->activity_type ?? 'Create'));
 
 		if (!$args || !isset($args->actor_srl) || !isset($args->comment_srl))
 		{
@@ -295,8 +622,21 @@ class EventHandlers extends Base
 			return;
 		}
 
-		self::debugLog('[processCommentDeliveryTask] Delivering comment_srl=' . $args->comment_srl . ' via actor=' . $actor->preferred_username);
-		self::deliverCommentToFollowers($actor, $args);
+		$activity_type = $args->activity_type ?? 'Create';
+		self::debugLog('[processCommentDeliveryTask] Delivering comment_srl=' . $args->comment_srl . ' via actor=' . $actor->preferred_username . ' type=' . $activity_type);
+
+		switch ($activity_type)
+		{
+			case 'Update':
+				self::deliverCommentUpdateToFollowers($actor, $args);
+				break;
+			case 'Delete':
+				self::deliverCommentDeleteToFollowers($actor, $args->comment_srl);
+				break;
+			default:
+				self::deliverCommentToFollowers($actor, $args);
+				break;
+		}
 	}
 
 	/**
@@ -425,6 +765,198 @@ class EventHandlers extends Base
 		]);
 
 		self::debugLog('[deliverCommentToFollowers] Activity created: note_id=' . $note_id . ', calling deliverToFollowers');
+
+		self::deliverToFollowers($actor, $activity);
+	}
+
+	/**
+	 * 게시물 Update Activity를 팔로워에게 배달
+	 *
+	 * @param object $actor
+	 * @param object $document
+	 */
+	protected static function deliverDocumentUpdateToFollowers($actor, $document)
+	{
+		self::debugLog('[deliverDocumentUpdateToFollowers] Start: actor=' . $actor->preferred_username . ', document_srl=' . $document->document_srl);
+
+		TypeConfiguration::set('undefined_properties', 'include');
+
+		$site_url = ActorModel::getSiteUrl();
+		$actor_url = ActorModel::getActorUrl($actor->preferred_username);
+		$document_srl = $document->document_srl;
+
+		$mid = \ModuleModel::getMidByModuleSrl($document->module_srl);
+		$document_url = $site_url . '?mid=' . urlencode($mid) . '&document_srl=' . $document_srl;
+
+		$title = $document->title ?? '';
+		$content = $document->content ?? '';
+
+		$content_text = strip_tags($content);
+		if (mb_strlen($content_text) > 500)
+		{
+			$content_text = mb_substr($content_text, 0, 497) . '...';
+		}
+
+		$html_content = '<p><strong>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</strong></p>';
+		$html_content .= '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
+		$html_content .= '<p><a href="' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
+
+		$updated = date('c');
+		$note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
+		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
+
+		$note = Type::create('Note', [
+			'id' => $note_id,
+			'updated' => $updated,
+			'attributedTo' => $actor_url,
+			'content' => $html_content,
+			'url' => $document_url,
+			'to' => ['https://www.w3.org/ns/activitystreams#Public'],
+			'cc' => [$followers_url],
+		]);
+
+		$activity = Type::create('Update', [
+			'@context' => 'https://www.w3.org/ns/activitystreams',
+			'id' => $note_id . '&type=activity&updated=' . urlencode($updated),
+			'actor' => $actor_url,
+			'published' => $updated,
+			'to' => ['https://www.w3.org/ns/activitystreams#Public'],
+			'cc' => [$followers_url],
+			'object' => $note->toArray(),
+		]);
+
+		self::debugLog('[deliverDocumentUpdateToFollowers] Activity created: note_id=' . $note_id . ', calling deliverToFollowers');
+
+		self::deliverToFollowers($actor, $activity);
+	}
+
+	/**
+	 * 게시물 Delete Activity를 팔로워에게 배달
+	 *
+	 * @param object $actor
+	 * @param int $document_srl
+	 */
+	protected static function deliverDocumentDeleteToFollowers($actor, $document_srl)
+	{
+		self::debugLog('[deliverDocumentDeleteToFollowers] Start: actor=' . $actor->preferred_username . ', document_srl=' . $document_srl);
+
+		TypeConfiguration::set('undefined_properties', 'include');
+
+		$actor_url = ActorModel::getActorUrl($actor->preferred_username);
+		$note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
+		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
+
+		// Mastodon 스타일 Delete: object에 Tombstone 사용
+		$tombstone = Type::create('Tombstone', [
+			'id' => $note_id,
+		]);
+
+		$activity = Type::create('Delete', [
+			'@context' => 'https://www.w3.org/ns/activitystreams',
+			'id' => $note_id . '&type=activity#delete',
+			'actor' => $actor_url,
+			'to' => ['https://www.w3.org/ns/activitystreams#Public'],
+			'cc' => [$followers_url],
+			'object' => $tombstone->toArray(),
+		]);
+
+		self::debugLog('[deliverDocumentDeleteToFollowers] Activity created: note_id=' . $note_id . ', calling deliverToFollowers');
+
+		self::deliverToFollowers($actor, $activity);
+	}
+
+	/**
+	 * 댓글 Update Activity를 팔로워에게 배달
+	 *
+	 * @param object $actor
+	 * @param object $comment
+	 */
+	protected static function deliverCommentUpdateToFollowers($actor, $comment)
+	{
+		self::debugLog('[deliverCommentUpdateToFollowers] Start: actor=' . $actor->preferred_username . ', comment_srl=' . $comment->comment_srl);
+
+		TypeConfiguration::set('undefined_properties', 'include');
+
+		$site_url = ActorModel::getSiteUrl();
+		$actor_url = ActorModel::getActorUrl($actor->preferred_username);
+		$comment_srl = $comment->comment_srl;
+		$document_srl = $comment->document_srl;
+
+		$mid = \ModuleModel::getMidByModuleSrl($comment->module_srl);
+		$document_url = $site_url . '?mid=' . urlencode($mid) . '&document_srl=' . $document_srl;
+		$comment_url = $document_url . '#comment_' . $comment_srl;
+
+		$content = $comment->content ?? '';
+		$content_text = strip_tags($content);
+		if (mb_strlen($content_text) > 500)
+		{
+			$content_text = mb_substr($content_text, 0, 497) . '...';
+		}
+
+		$html_content = '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
+		$html_content .= '<p><a href="' . htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
+
+		$updated = date('c');
+		$note_id = ActorModel::getCommentNoteUrl($actor->preferred_username, $comment_srl);
+		$parent_note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
+		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
+
+		$note = Type::create('Note', [
+			'id' => $note_id,
+			'updated' => $updated,
+			'attributedTo' => $actor_url,
+			'content' => $html_content,
+			'url' => $comment_url,
+			'inReplyTo' => $parent_note_id,
+			'to' => ['https://www.w3.org/ns/activitystreams#Public'],
+			'cc' => [$followers_url],
+		]);
+
+		$activity = Type::create('Update', [
+			'@context' => 'https://www.w3.org/ns/activitystreams',
+			'id' => $note_id . '&type=activity&updated=' . urlencode($updated),
+			'actor' => $actor_url,
+			'published' => $updated,
+			'to' => ['https://www.w3.org/ns/activitystreams#Public'],
+			'cc' => [$followers_url],
+			'object' => $note->toArray(),
+		]);
+
+		self::debugLog('[deliverCommentUpdateToFollowers] Activity created: note_id=' . $note_id . ', calling deliverToFollowers');
+
+		self::deliverToFollowers($actor, $activity);
+	}
+
+	/**
+	 * 댓글 Delete Activity를 팔로워에게 배달
+	 *
+	 * @param object $actor
+	 * @param int $comment_srl
+	 */
+	protected static function deliverCommentDeleteToFollowers($actor, $comment_srl)
+	{
+		self::debugLog('[deliverCommentDeleteToFollowers] Start: actor=' . $actor->preferred_username . ', comment_srl=' . $comment_srl);
+
+		TypeConfiguration::set('undefined_properties', 'include');
+
+		$actor_url = ActorModel::getActorUrl($actor->preferred_username);
+		$note_id = ActorModel::getCommentNoteUrl($actor->preferred_username, $comment_srl);
+		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
+
+		$tombstone = Type::create('Tombstone', [
+			'id' => $note_id,
+		]);
+
+		$activity = Type::create('Delete', [
+			'@context' => 'https://www.w3.org/ns/activitystreams',
+			'id' => $note_id . '&type=activity#delete',
+			'actor' => $actor_url,
+			'to' => ['https://www.w3.org/ns/activitystreams#Public'],
+			'cc' => [$followers_url],
+			'object' => $tombstone->toArray(),
+		]);
+
+		self::debugLog('[deliverCommentDeleteToFollowers] Activity created: note_id=' . $note_id . ', calling deliverToFollowers');
 
 		self::deliverToFollowers($actor, $activity);
 	}
