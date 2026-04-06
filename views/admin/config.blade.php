@@ -35,6 +35,19 @@
 				<p class="x_help-block">{{ $lang->cmd_activitypub_send_comments_desc }}</p>
 			</div>
 		</div>
+
+		<div class="x_control-group">
+			<label class="x_control-label">{{ $lang->cmd_activitypub_authorized_fetch }}</label>
+			<div class="x_controls">
+				<label class="x_inline">
+					<input type="radio" name="authorized_fetch" value="Y" @checked(($config->authorized_fetch ?? 'N') === 'Y') /> {{ $lang->cmd_yes }}
+				</label>
+				<label class="x_inline">
+					<input type="radio" name="authorized_fetch" value="N" @checked(($config->authorized_fetch ?? 'N') === 'N') /> {{ $lang->cmd_no }}
+				</label>
+				<p class="x_help-block">{{ $lang->cmd_activitypub_authorized_fetch_desc }}</p>
+			</div>
+		</div>
 	</section>
 
 	<div class="btnArea x_clearfix">

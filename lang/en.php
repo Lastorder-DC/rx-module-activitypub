@@ -42,3 +42,5 @@ $lang->msg_activitypub_key_generation_failed = 'Failed to generate RSA key pair.
 $lang->msg_activitypub_module_not_found = 'Module with the specified mid was not found.';
 $lang->msg_activitypub_member_not_found = 'Member with the specified member_srl was not found.';
 $lang->cmd_activitypub_deleted = 'Deleted';
+$lang->cmd_activitypub_authorized_fetch = 'Authorized Fetch (Secure Mode)';
+$lang->cmd_activitypub_authorized_fetch_desc = 'When enabled, all GET requests to ActivityPub endpoints require HTTP Signature verification. This corresponds to Mastodon\'s Secure Mode, blocking content access from unauthenticated servers.';
