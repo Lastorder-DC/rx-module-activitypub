@@ -19,7 +19,7 @@
 
 ## 사용 예시
 
-게시판 mid가 `board123`이고 사이트 도메인이 `example.com`인 경우:
+생성한 actor id가 `board123`이고 사이트 도메인이 `example.com`인 경우:
 
 - ActivityPub 주소: `@board123@example.com`
 - WebFinger: `https://example.com/.well-known/webfinger?resource=acct:board123@example.com`
