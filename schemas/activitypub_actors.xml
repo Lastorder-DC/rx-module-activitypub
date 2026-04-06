@@ -11,6 +11,15 @@
 	<column name="public_key" type="bigtext" notnull="notnull" />
 	<column name="private_key" type="bigtext" notnull="notnull" />
 	<column name="hide_followers" type="char" size="1" default="N" notnull="notnull" />
+	<column name="discoverable" type="char" size="1" default="Y" notnull="notnull" />
+	<column name="indexable" type="char" size="1" default="N" notnull="notnull" />
+	<column name="visibility" type="varchar" size="10" default="unlisted" notnull="notnull" />
+	<column name="quote_policy" type="varchar" size="20" default="nobody" notnull="notnull" />
+	<column name="category_filter_mode" type="varchar" size="10" default="off" notnull="notnull" />
+	<column name="category_filter_srls" type="varchar" size="500" />
+	<column name="attach_thumbnail" type="char" size="1" default="N" notnull="notnull" />
+	<column name="sensitive_mode" type="varchar" size="20" default="off" notnull="notnull" />
+	<column name="sensitive_category_srls" type="varchar" size="500" />
 	<column name="is_deleted" type="char" size="1" default="N" notnull="notnull" index="idx_is_deleted" />
 	<column name="regdate" type="date" index="idx_regdate" />
 </table>

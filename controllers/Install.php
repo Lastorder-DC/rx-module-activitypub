@@ -59,6 +59,48 @@ class Install extends Base
 			return true;
 		}
 
+		// discoverable 컬럼이 없으면 업데이트 필요
+		if (!$oDB->isColumnExists('activitypub_actors', 'discoverable'))
+		{
+			return true;
+		}
+
+		// indexable 컬럼이 없으면 업데이트 필요
+		if (!$oDB->isColumnExists('activitypub_actors', 'indexable'))
+		{
+			return true;
+		}
+
+		// visibility 컬럼이 없으면 업데이트 필요
+		if (!$oDB->isColumnExists('activitypub_actors', 'visibility'))
+		{
+			return true;
+		}
+
+		// quote_policy 컬럼이 없으면 업데이트 필요
+		if (!$oDB->isColumnExists('activitypub_actors', 'quote_policy'))
+		{
+			return true;
+		}
+
+		// category_filter_mode 컬럼이 없으면 업데이트 필요
+		if (!$oDB->isColumnExists('activitypub_actors', 'category_filter_mode'))
+		{
+			return true;
+		}
+
+		// attach_thumbnail 컬럼이 없으면 업데이트 필요
+		if (!$oDB->isColumnExists('activitypub_actors', 'attach_thumbnail'))
+		{
+			return true;
+		}
+
+		// sensitive_mode 컬럼이 없으면 업데이트 필요
+		if (!$oDB->isColumnExists('activitypub_actors', 'sensitive_mode'))
+		{
+			return true;
+		}
+
 		return false;
 	}
 
@@ -120,6 +162,60 @@ class Install extends Base
 		if (!$oDB->isColumnExists('activitypub_actors', 'hide_followers'))
 		{
 			$oDB->addColumn('activitypub_actors', 'hide_followers', 'char', 1, 'N', true, 'private_key');
+		}
+
+		// discoverable 컬럼 추가
+		if (!$oDB->isColumnExists('activitypub_actors', 'discoverable'))
+		{
+			$oDB->addColumn('activitypub_actors', 'discoverable', 'char', 1, 'Y', true, 'hide_followers');
+		}
+
+		// indexable 컬럼 추가
+		if (!$oDB->isColumnExists('activitypub_actors', 'indexable'))
+		{
+			$oDB->addColumn('activitypub_actors', 'indexable', 'char', 1, 'N', true, 'discoverable');
+		}
+
+		// visibility 컬럼 추가
+		if (!$oDB->isColumnExists('activitypub_actors', 'visibility'))
+		{
+			$oDB->addColumn('activitypub_actors', 'visibility', 'varchar', 10, 'unlisted', true, 'indexable');
+		}
+
+		// quote_policy 컬럼 추가
+		if (!$oDB->isColumnExists('activitypub_actors', 'quote_policy'))
+		{
+			$oDB->addColumn('activitypub_actors', 'quote_policy', 'varchar', 20, 'nobody', true, 'visibility');
+		}
+
+		// category_filter_mode 컬럼 추가
+		if (!$oDB->isColumnExists('activitypub_actors', 'category_filter_mode'))
+		{
+			$oDB->addColumn('activitypub_actors', 'category_filter_mode', 'varchar', 10, 'off', true, 'quote_policy');
+		}
+
+		// category_filter_srls 컬럼 추가
+		if (!$oDB->isColumnExists('activitypub_actors', 'category_filter_srls'))
+		{
+			$oDB->addColumn('activitypub_actors', 'category_filter_srls', 'varchar', 500, null, false, 'category_filter_mode');
+		}
+
+		// attach_thumbnail 컬럼 추가
+		if (!$oDB->isColumnExists('activitypub_actors', 'attach_thumbnail'))
+		{
+			$oDB->addColumn('activitypub_actors', 'attach_thumbnail', 'char', 1, 'N', true, 'category_filter_srls');
+		}
+
+		// sensitive_mode 컬럼 추가
+		if (!$oDB->isColumnExists('activitypub_actors', 'sensitive_mode'))
+		{
+			$oDB->addColumn('activitypub_actors', 'sensitive_mode', 'varchar', 20, 'off', true, 'attach_thumbnail');
+		}
+
+		// sensitive_category_srls 컬럼 추가
+		if (!$oDB->isColumnExists('activitypub_actors', 'sensitive_category_srls'))
+		{
+			$oDB->addColumn('activitypub_actors', 'sensitive_category_srls', 'varchar', 500, null, false, 'sensitive_mode');
 		}
 
 		return new \BaseObject();

@@ -108,6 +108,12 @@ class Admin extends Base
 		// Authorized Fetch (Secure Mode) 설정
 		$config->authorized_fetch = ($vars->authorized_fetch === 'Y') ? 'Y' : 'N';
 
+		// 모듈 ON/OFF 설정
+		$config->module_enabled = ($vars->module_enabled === 'N') ? 'N' : 'Y';
+
+		// 디버그 ON/OFF 설정
+		$config->debug_enabled = ($vars->debug_enabled === 'Y') ? 'Y' : 'N';
+
 		// 설정 저장
 		$output = ConfigModel::setConfig($config);
 		if (!$output->toBool())
@@ -140,6 +146,15 @@ class Admin extends Base
 		$summary = trim($vars->summary ?? '');
 		$icon_url = trim($vars->icon_url ?? '');
 		$hide_followers = ($vars->hide_followers ?? 'N') === 'Y' ? 'Y' : 'N';
+		$discoverable = ($vars->discoverable ?? 'Y') === 'N' ? 'N' : 'Y';
+		$indexable = ($vars->indexable ?? 'N') === 'Y' ? 'Y' : 'N';
+		$visibility = in_array($vars->visibility ?? '', ['public', 'unlisted', 'private', 'direct']) ? $vars->visibility : 'unlisted';
+		$quote_policy = in_array($vars->quote_policy ?? '', ['public', 'followers', 'following', 'nobody']) ? $vars->quote_policy : 'nobody';
+		$category_filter_mode = in_array($vars->category_filter_mode ?? '', ['off', 'include', 'exclude']) ? $vars->category_filter_mode : 'off';
+		$category_filter_srls = trim($vars->category_filter_srls ?? '');
+		$attach_thumbnail = ($vars->attach_thumbnail ?? 'N') === 'Y' ? 'Y' : 'N';
+		$sensitive_mode = in_array($vars->sensitive_mode ?? '', ['off', 'always', 'category']) ? $vars->sensitive_mode : 'off';
+		$sensitive_category_srls = trim($vars->sensitive_category_srls ?? '');
 
 		if (!$preferred_username)
 		{
@@ -173,7 +188,17 @@ class Admin extends Base
 			}
 			$module_srl = intval($srl_list[0]);
 
-			$output = ActorModel::createBoardActor($module_srl, $preferred_username, $display_name, $summary, $icon_url, $hide_followers);
+			$output = ActorModel::createBoardActor($module_srl, $preferred_username, $display_name, $summary, $icon_url, $hide_followers, [
+				'discoverable' => $discoverable,
+				'indexable' => $indexable,
+				'visibility' => $visibility,
+				'quote_policy' => $quote_policy,
+				'category_filter_mode' => $category_filter_mode,
+				'category_filter_srls' => $category_filter_srls,
+				'attach_thumbnail' => $attach_thumbnail,
+				'sensitive_mode' => $sensitive_mode,
+				'sensitive_category_srls' => $sensitive_category_srls,
+			]);
 			if (!$output->toBool())
 			{
 				return $output;
@@ -193,7 +218,17 @@ class Admin extends Base
 				return new BaseObject(-1, 'msg_activitypub_member_not_found');
 			}
 
-			$output = ActorModel::createUserActor($member_srl, $preferred_username, $display_name, $summary, $icon_url, $hide_followers);
+			$output = ActorModel::createUserActor($member_srl, $preferred_username, $display_name, $summary, $icon_url, $hide_followers, [
+				'discoverable' => $discoverable,
+				'indexable' => $indexable,
+				'visibility' => $visibility,
+				'quote_policy' => $quote_policy,
+				'category_filter_mode' => $category_filter_mode,
+				'category_filter_srls' => $category_filter_srls,
+				'attach_thumbnail' => $attach_thumbnail,
+				'sensitive_mode' => $sensitive_mode,
+				'sensitive_category_srls' => $sensitive_category_srls,
+			]);
 			if (!$output->toBool())
 			{
 				return $output;
@@ -301,6 +336,15 @@ class Admin extends Base
 		$summary = trim($vars->summary ?? '');
 		$icon_url = trim($vars->icon_url ?? '');
 		$hide_followers = ($vars->hide_followers ?? 'N') === 'Y' ? 'Y' : 'N';
+		$discoverable = ($vars->discoverable ?? 'Y') === 'N' ? 'N' : 'Y';
+		$indexable = ($vars->indexable ?? 'N') === 'Y' ? 'Y' : 'N';
+		$visibility = in_array($vars->visibility ?? '', ['public', 'unlisted', 'private', 'direct']) ? $vars->visibility : 'unlisted';
+		$quote_policy = in_array($vars->quote_policy ?? '', ['public', 'followers', 'following', 'nobody']) ? $vars->quote_policy : 'nobody';
+		$category_filter_mode = in_array($vars->category_filter_mode ?? '', ['off', 'include', 'exclude']) ? $vars->category_filter_mode : 'off';
+		$category_filter_srls = trim($vars->category_filter_srls ?? '');
+		$attach_thumbnail = ($vars->attach_thumbnail ?? 'N') === 'Y' ? 'Y' : 'N';
+		$sensitive_mode = in_array($vars->sensitive_mode ?? '', ['off', 'always', 'category']) ? $vars->sensitive_mode : 'off';
+		$sensitive_category_srls = trim($vars->sensitive_category_srls ?? '');
 
 		// icon_url이 입력된 경우 유효한 URL인지 확인
 		if ($icon_url !== '' && !filter_var($icon_url, FILTER_VALIDATE_URL))
@@ -308,7 +352,17 @@ class Admin extends Base
 			return new BaseObject(-1, 'msg_activitypub_invalid_icon_url');
 		}
 
-		$output = ActorModel::updateActorProfile($actor_srl, $display_name, $summary, $icon_url, $hide_followers);
+		$output = ActorModel::updateActorProfile($actor_srl, $display_name, $summary, $icon_url, $hide_followers, [
+			'discoverable' => $discoverable,
+			'indexable' => $indexable,
+			'visibility' => $visibility,
+			'quote_policy' => $quote_policy,
+			'category_filter_mode' => $category_filter_mode,
+			'category_filter_srls' => $category_filter_srls,
+			'attach_thumbnail' => $attach_thumbnail,
+			'sensitive_mode' => $sensitive_mode,
+			'sensitive_category_srls' => $sensitive_category_srls,
+		]);
 		if (!$output->toBool())
 		{
 			return $output;

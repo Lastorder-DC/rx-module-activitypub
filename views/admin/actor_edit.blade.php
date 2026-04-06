@@ -90,6 +90,113 @@
 			</div>
 		</div>
 		@endif
+
+		<h3>{{ $lang->cmd_activitypub_ap_settings }}</h3>
+
+		<div class="x_control-group">
+			<label class="x_control-label">{{ $lang->cmd_activitypub_discoverable }}</label>
+			<div class="x_controls">
+				<label class="x_inline">
+					<input type="radio" name="discoverable" value="Y" @checked(($actor->discoverable ?? 'Y') === 'Y') /> {{ $lang->cmd_yes }}
+				</label>
+				<label class="x_inline">
+					<input type="radio" name="discoverable" value="N" @checked(($actor->discoverable ?? 'Y') === 'N') /> {{ $lang->cmd_no }}
+				</label>
+				<p class="x_help-block">{{ $lang->cmd_activitypub_discoverable_desc }}</p>
+			</div>
+		</div>
+
+		<div class="x_control-group">
+			<label class="x_control-label">{{ $lang->cmd_activitypub_indexable }}</label>
+			<div class="x_controls">
+				<label class="x_inline">
+					<input type="radio" name="indexable" value="Y" @checked(($actor->indexable ?? 'N') === 'Y') /> {{ $lang->cmd_yes }}
+				</label>
+				<label class="x_inline">
+					<input type="radio" name="indexable" value="N" @checked(($actor->indexable ?? 'N') === 'N') /> {{ $lang->cmd_no }}
+				</label>
+				<p class="x_help-block">{{ $lang->cmd_activitypub_indexable_desc }}</p>
+			</div>
+		</div>
+
+		<div class="x_control-group">
+			<label class="x_control-label">{{ $lang->cmd_activitypub_visibility }}</label>
+			<div class="x_controls">
+				<select name="visibility" style="width:200px;">
+					<option value="public" @selected(($actor->visibility ?? 'unlisted') === 'public')>{{ $lang->cmd_activitypub_visibility_public }}</option>
+					<option value="unlisted" @selected(($actor->visibility ?? 'unlisted') === 'unlisted')>{{ $lang->cmd_activitypub_visibility_unlisted }}</option>
+					<option value="private" @selected(($actor->visibility ?? 'unlisted') === 'private')>{{ $lang->cmd_activitypub_visibility_private }}</option>
+					<option value="direct" @selected(($actor->visibility ?? 'unlisted') === 'direct')>{{ $lang->cmd_activitypub_visibility_direct }}</option>
+				</select>
+				<p class="x_help-block">{{ $lang->cmd_activitypub_visibility_desc }}</p>
+			</div>
+		</div>
+
+		<div class="x_control-group">
+			<label class="x_control-label">{{ $lang->cmd_activitypub_quote_policy }}</label>
+			<div class="x_controls">
+				<select name="quote_policy" style="width:200px;">
+					<option value="public" @selected(($actor->quote_policy ?? 'nobody') === 'public')>{{ $lang->cmd_activitypub_quote_policy_public }}</option>
+					<option value="followers" @selected(($actor->quote_policy ?? 'nobody') === 'followers')>{{ $lang->cmd_activitypub_quote_policy_followers }}</option>
+					<option value="following" @selected(($actor->quote_policy ?? 'nobody') === 'following')>{{ $lang->cmd_activitypub_quote_policy_following }}</option>
+					<option value="nobody" @selected(($actor->quote_policy ?? 'nobody') === 'nobody')>{{ $lang->cmd_activitypub_quote_policy_nobody }}</option>
+				</select>
+				<p class="x_help-block">{{ $lang->cmd_activitypub_quote_policy_desc }}</p>
+			</div>
+		</div>
+
+		<div class="x_control-group">
+			<label class="x_control-label">{{ $lang->cmd_activitypub_category_filter_mode }}</label>
+			<div class="x_controls">
+				<select name="category_filter_mode" style="width:300px;">
+					<option value="off" @selected(($actor->category_filter_mode ?? 'off') === 'off')>{{ $lang->cmd_activitypub_category_filter_off }}</option>
+					<option value="include" @selected(($actor->category_filter_mode ?? 'off') === 'include')>{{ $lang->cmd_activitypub_category_filter_include }}</option>
+					<option value="exclude" @selected(($actor->category_filter_mode ?? 'off') === 'exclude')>{{ $lang->cmd_activitypub_category_filter_exclude }}</option>
+				</select>
+				<p class="x_help-block">{{ $lang->cmd_activitypub_category_filter_mode_desc }}</p>
+			</div>
+		</div>
+
+		<div class="x_control-group">
+			<label class="x_control-label" for="category_filter_srls">{{ $lang->cmd_activitypub_category_filter_srls }}</label>
+			<div class="x_controls">
+				<input type="text" name="category_filter_srls" id="category_filter_srls" value="{{ $actor->category_filter_srls ?? '' }}" placeholder="1,2,3" style="width:400px;" />
+				<p class="x_help-block">{{ $lang->cmd_activitypub_category_filter_srls_desc }}</p>
+			</div>
+		</div>
+
+		<div class="x_control-group">
+			<label class="x_control-label">{{ $lang->cmd_activitypub_attach_thumbnail }}</label>
+			<div class="x_controls">
+				<label class="x_inline">
+					<input type="radio" name="attach_thumbnail" value="Y" @checked(($actor->attach_thumbnail ?? 'N') === 'Y') /> {{ $lang->cmd_yes }}
+				</label>
+				<label class="x_inline">
+					<input type="radio" name="attach_thumbnail" value="N" @checked(($actor->attach_thumbnail ?? 'N') === 'N') /> {{ $lang->cmd_no }}
+				</label>
+				<p class="x_help-block">{{ $lang->cmd_activitypub_attach_thumbnail_desc }}</p>
+			</div>
+		</div>
+
+		<div class="x_control-group">
+			<label class="x_control-label">{{ $lang->cmd_activitypub_sensitive_mode }}</label>
+			<div class="x_controls">
+				<select name="sensitive_mode" style="width:200px;">
+					<option value="off" @selected(($actor->sensitive_mode ?? 'off') === 'off')>{{ $lang->cmd_activitypub_sensitive_off }}</option>
+					<option value="always" @selected(($actor->sensitive_mode ?? 'off') === 'always')>{{ $lang->cmd_activitypub_sensitive_always }}</option>
+					<option value="category" @selected(($actor->sensitive_mode ?? 'off') === 'category')>{{ $lang->cmd_activitypub_sensitive_category }}</option>
+				</select>
+				<p class="x_help-block">{{ $lang->cmd_activitypub_sensitive_mode_desc }}</p>
+			</div>
+		</div>
+
+		<div class="x_control-group">
+			<label class="x_control-label" for="sensitive_category_srls">{{ $lang->cmd_activitypub_sensitive_category_srls }}</label>
+			<div class="x_controls">
+				<input type="text" name="sensitive_category_srls" id="sensitive_category_srls" value="{{ $actor->sensitive_category_srls ?? '' }}" placeholder="1,2,3" style="width:400px;" />
+				<p class="x_help-block">{{ $lang->cmd_activitypub_sensitive_category_srls_desc }}</p>
+			</div>
+		</div>
 	</section>
 
 	<div class="btnArea x_clearfix">

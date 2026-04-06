@@ -8,6 +8,15 @@
 		<column name="summary" var="summary" />
 		<column name="icon_url" var="icon_url" />
 		<column name="hide_followers" var="hide_followers" />
+		<column name="discoverable" var="discoverable" />
+		<column name="indexable" var="indexable" />
+		<column name="visibility" var="visibility" />
+		<column name="quote_policy" var="quote_policy" />
+		<column name="category_filter_mode" var="category_filter_mode" />
+		<column name="category_filter_srls" var="category_filter_srls" />
+		<column name="attach_thumbnail" var="attach_thumbnail" />
+		<column name="sensitive_mode" var="sensitive_mode" />
+		<column name="sensitive_category_srls" var="sensitive_category_srls" />
 	</columns>
 	<conditions>
 		<condition operation="equal" column="actor_srl" var="actor_srl" filter="number" notnull="notnull" />

@@ -23,6 +23,13 @@ class EventHandlers extends Base
 	 */
 	public function afterPublishDocument($obj)
 	{
+		// 모듈이 비활성화된 경우 즉시 반환
+		$config = ConfigModel::getConfig();
+		if (($config->module_enabled ?? 'Y') !== 'Y')
+		{
+			return;
+		}
+
 		if (!$obj || !isset($obj->module_srl))
 		{
 			return;
@@ -49,9 +56,30 @@ class EventHandlers extends Base
 			return;
 		}
 
+		// 카테고리 srl 추출
+		$category_srl = intval($obj->category_srl ?? 0);
+
 		// 각 Actor를 통해 팔로워에게 전송
 		foreach ($actors as $actor)
 		{
+			// 카테고리 필터 확인
+			if (($actor->category_filter_mode ?? 'off') === 'include')
+			{
+				$allowed = array_map('intval', array_filter(explode(',', $actor->category_filter_srls ?? ''), 'strlen'));
+				if (!in_array($category_srl, $allowed))
+				{
+					continue;
+				}
+			}
+			elseif (($actor->category_filter_mode ?? 'off') === 'exclude')
+			{
+				$excluded = array_map('intval', array_filter(explode(',', $actor->category_filter_srls ?? ''), 'strlen'));
+				if (in_array($category_srl, $excluded))
+				{
+					continue;
+				}
+			}
+
 			// AP 활동 기록 추가
 			ActorModel::addActivity($actor->actor_srl, 'document', $obj->document_srl, $obj->module_srl, $member_srl);
 
@@ -85,13 +113,19 @@ class EventHandlers extends Base
 	 */
 	public function afterInsertComment($obj)
 	{
+		// 모듈이 비활성화된 경우 즉시 반환
+		$config = ConfigModel::getConfig();
+		if (($config->module_enabled ?? 'Y') !== 'Y')
+		{
+			return;
+		}
+
 		if (!$obj || !isset($obj->module_srl))
 		{
 			return;
 		}
 
 		// 댓글 AP 전송이 비활성화된 경우 제외
-		$config = ConfigModel::getConfig();
 		if (($config->send_comments ?? 'Y') !== 'Y')
 		{
 			return;
@@ -159,6 +193,13 @@ class EventHandlers extends Base
 	 */
 	public function afterUpdateDocument($obj)
 	{
+		// 모듈이 비활성화된 경우 즉시 반환
+		$config = ConfigModel::getConfig();
+		if (($config->module_enabled ?? 'Y') !== 'Y')
+		{
+			return;
+		}
+
 		if (!$obj || !isset($obj->document_srl))
 		{
 			return;
@@ -188,8 +229,27 @@ class EventHandlers extends Base
 		}
 
 		// 각 Actor를 통해 팔로워에게 Update 전송
+		$category_srl = intval($obj->category_srl ?? 0);
 		foreach ($actors as $actor)
 		{
+			// 카테고리 필터 확인
+			if (($actor->category_filter_mode ?? 'off') === 'include')
+			{
+				$allowed = array_map('intval', array_filter(explode(',', $actor->category_filter_srls ?? ''), 'strlen'));
+				if (!in_array($category_srl, $allowed))
+				{
+					continue;
+				}
+			}
+			elseif (($actor->category_filter_mode ?? 'off') === 'exclude')
+			{
+				$excluded = array_map('intval', array_filter(explode(',', $actor->category_filter_srls ?? ''), 'strlen'));
+				if (in_array($category_srl, $excluded))
+				{
+					continue;
+				}
+			}
+
 			// 활동 기록이 없으면 추가 (기존 게시물 호환)
 			ActorModel::addActivity($actor->actor_srl, 'document', $obj->document_srl, $module_srl, $member_srl);
 
@@ -223,6 +283,13 @@ class EventHandlers extends Base
 	 */
 	public function beforeDeleteDocument($obj)
 	{
+		// 모듈이 비활성화된 경우 즉시 반환
+		$config = ConfigModel::getConfig();
+		if (($config->module_enabled ?? 'Y') !== 'Y')
+		{
+			return;
+		}
+
 		self::debugLog('[beforeDeleteDocument] Triggered with document_srl=' . (isset($obj->document_srl) ? $obj->document_srl : 'null'));
 		$this->sendDeleteDocumentActivity($obj);
 	}
@@ -235,6 +302,13 @@ class EventHandlers extends Base
 	 */
 	public function beforeMoveDocumentToTrash($obj)
 	{
+		// 모듈이 비활성화된 경우 즉시 반환
+		$config = ConfigModel::getConfig();
+		if (($config->module_enabled ?? 'Y') !== 'Y')
+		{
+			return;
+		}
+
 		self::debugLog('[beforeMoveDocumentToTrash] Triggered with document_srl=' . (isset($obj->document_srl) ? $obj->document_srl : 'null'));
 		$this->sendDeleteDocumentActivity($obj);
 	}
@@ -304,13 +378,19 @@ class EventHandlers extends Base
 	 */
 	public function afterUpdateComment($obj)
 	{
+		// 모듈이 비활성화된 경우 즉시 반환
+		$config = ConfigModel::getConfig();
+		if (($config->module_enabled ?? 'Y') !== 'Y')
+		{
+			return;
+		}
+
 		if (!$obj || !isset($obj->comment_srl))
 		{
 			return;
 		}
 
 		// 댓글 AP 전송이 비활성화된 경우 제외
-		$config = ConfigModel::getConfig();
 		if (($config->send_comments ?? 'Y') !== 'Y')
 		{
 			return;
@@ -390,6 +470,13 @@ class EventHandlers extends Base
 	 */
 	public function beforeDeleteComment($obj)
 	{
+		// 모듈이 비활성화된 경우 즉시 반환
+		$config = ConfigModel::getConfig();
+		if (($config->module_enabled ?? 'Y') !== 'Y')
+		{
+			return;
+		}
+
 		$this->sendDeleteCommentActivity($obj);
 	}
 
@@ -401,6 +488,13 @@ class EventHandlers extends Base
 	 */
 	public function beforeMoveCommentToTrash($obj)
 	{
+		// 모듈이 비활성화된 경우 즉시 반환
+		$config = ConfigModel::getConfig();
+		if (($config->module_enabled ?? 'Y') !== 'Y')
+		{
+			return;
+		}
+
 		$this->sendDeleteCommentActivity($obj);
 	}
 
@@ -472,6 +566,13 @@ class EventHandlers extends Base
 	 */
 	public function beforeModuleHandlerProc($obj)
 	{
+		// 모듈이 비활성화된 경우 즉시 반환
+		$config = ConfigModel::getConfig();
+		if (($config->module_enabled ?? 'Y') !== 'Y')
+		{
+			return;
+		}
+
 		$request_uri = $_SERVER['REQUEST_URI'] ?? '';
 
 		// /.well-known/webfinger 요청 처리
@@ -562,6 +663,103 @@ class EventHandlers extends Base
 			&& function_exists('config')
 			&& config('queue.enabled')
 			&& !defined('RXQUEUE_CRON');
+	}
+
+	/**
+	 * Actor의 visibility 설정에 따른 to/cc 필드 결정
+	 *
+	 * @param object $actor
+	 * @return array ['to' => [...], 'cc' => [...]]
+	 */
+	protected static function getVisibilityRecipients($actor)
+	{
+		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
+		$visibility = $actor->visibility ?? 'unlisted';
+
+		switch ($visibility)
+		{
+			case 'public':
+				return [
+					'to' => ['https://www.w3.org/ns/activitystreams#Public'],
+					'cc' => [$followers_url],
+				];
+			case 'private':
+				return [
+					'to' => [$followers_url],
+					'cc' => [],
+				];
+			case 'direct':
+				return [
+					'to' => [],
+					'cc' => [],
+				];
+			case 'unlisted':
+			default:
+				return [
+					'to' => [$followers_url],
+					'cc' => ['https://www.w3.org/ns/activitystreams#Public'],
+				];
+		}
+	}
+
+	/**
+	 * 게시물에 대한 썸네일 첨부 및 민감 표시 데이터 생성
+	 *
+	 * @param object $actor
+	 * @param int $document_srl
+	 * @return array ['attachment' => [...], 'sensitive' => bool]
+	 */
+	protected static function getThumbnailData($actor, $document_srl)
+	{
+		$result = ['attachment' => null, 'sensitive' => false];
+
+		if (($actor->attach_thumbnail ?? 'N') !== 'Y')
+		{
+			return $result;
+		}
+
+		$oDocument = \DocumentModel::getDocument($document_srl);
+		if (!$oDocument || !$oDocument->document_srl)
+		{
+			return $result;
+		}
+
+		$thumbnailUrl = $oDocument->getThumbnail(0, 0, 'crop', true, 'jpg');
+		if (!$thumbnailUrl)
+		{
+			return $result;
+		}
+
+		// 상대 경로인 경우 사이트 URL 추가
+		if (strpos($thumbnailUrl, 'http') !== 0)
+		{
+			$site_url = ActorModel::getSiteUrl();
+			$thumbnailUrl = rtrim($site_url, '/') . '/' . ltrim($thumbnailUrl, '/');
+		}
+
+		$result['attachment'] = [[
+			'type' => 'Image',
+			'mediaType' => 'image/jpeg',
+			'url' => $thumbnailUrl,
+		]];
+
+		// 민감 이미지 확인
+		$sensitive_mode = $actor->sensitive_mode ?? 'off';
+		if ($sensitive_mode === 'always')
+		{
+			$result['sensitive'] = true;
+		}
+		elseif ($sensitive_mode === 'category')
+		{
+			$cat_srl = intval($oDocument->get('category_srl'));
+			$sens_cats = array_map('intval', array_filter(explode(',', $actor->sensitive_category_srls ?? ''), 'strlen'));
+			if (in_array($cat_srl, $sens_cats))
+			{
+				$result['sensitive'] = true;
+			}
+		}
+
+		return $result;
 	}
 
 	/**
@@ -683,24 +881,38 @@ class EventHandlers extends Base
 		$published = date('c');
 		$note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
 		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
+		$recipients = self::getVisibilityRecipients($actor);
 
-		$note = Type::create('Note', [
+		$note_data = [
 			'id' => $note_id,
 			'published' => $published,
 			'attributedTo' => $actor_url,
 			'content' => $html_content,
 			'url' => $document_url,
-			'to' => ['https://www.w3.org/ns/activitystreams#Public'],
-			'cc' => [$followers_url],
-		]);
+			'to' => $recipients['to'],
+			'cc' => $recipients['cc'],
+		];
+
+		// 썸네일 첨부 및 민감 표시
+		$thumbData = self::getThumbnailData($actor, $document_srl);
+		if ($thumbData['attachment'])
+		{
+			$note_data['attachment'] = $thumbData['attachment'];
+		}
+		if ($thumbData['sensitive'])
+		{
+			$note_data['sensitive'] = true;
+		}
+
+		$note = Type::create('Note', $note_data);
 
 		$activity = Type::create('Create', [
 			'@context' => 'https://www.w3.org/ns/activitystreams',
 			'id' => $note_id . '&type=activity',
 			'actor' => $actor_url,
 			'published' => $published,
-			'to' => ['https://www.w3.org/ns/activitystreams#Public'],
-			'cc' => [$followers_url],
+			'to' => $recipients['to'],
+			'cc' => $recipients['cc'],
 			'object' => $note->toArray(),
 		]);
 
@@ -747,6 +959,7 @@ class EventHandlers extends Base
 		$note_id = ActorModel::getCommentNoteUrl($actor->preferred_username, $comment_srl);
 		$parent_note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
 		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
+		$recipients = self::getVisibilityRecipients($actor);
 
 		$note = Type::create('Note', [
 			'id' => $note_id,
@@ -755,8 +968,8 @@ class EventHandlers extends Base
 			'content' => $html_content,
 			'url' => $comment_url,
 			'inReplyTo' => $parent_note_id,
-			'to' => ['https://www.w3.org/ns/activitystreams#Public'],
-			'cc' => [$followers_url],
+			'to' => $recipients['to'],
+			'cc' => $recipients['cc'],
 		]);
 
 		$activity = Type::create('Create', [
@@ -764,8 +977,8 @@ class EventHandlers extends Base
 			'id' => $note_id . '&type=activity',
 			'actor' => $actor_url,
 			'published' => $published,
-			'to' => ['https://www.w3.org/ns/activitystreams#Public'],
-			'cc' => [$followers_url],
+			'to' => $recipients['to'],
+			'cc' => $recipients['cc'],
 			'object' => $note->toArray(),
 		]);
 
@@ -809,24 +1022,38 @@ class EventHandlers extends Base
 		$updated = date('c');
 		$note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
 		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
+		$recipients = self::getVisibilityRecipients($actor);
 
-		$note = Type::create('Note', [
+		$note_data = [
 			'id' => $note_id,
 			'updated' => $updated,
 			'attributedTo' => $actor_url,
 			'content' => $html_content,
 			'url' => $document_url,
-			'to' => ['https://www.w3.org/ns/activitystreams#Public'],
-			'cc' => [$followers_url],
-		]);
+			'to' => $recipients['to'],
+			'cc' => $recipients['cc'],
+		];
+
+		// 썸네일 첨부 및 민감 표시
+		$thumbData = self::getThumbnailData($actor, $document_srl);
+		if ($thumbData['attachment'])
+		{
+			$note_data['attachment'] = $thumbData['attachment'];
+		}
+		if ($thumbData['sensitive'])
+		{
+			$note_data['sensitive'] = true;
+		}
+
+		$note = Type::create('Note', $note_data);
 
 		$activity = Type::create('Update', [
 			'@context' => 'https://www.w3.org/ns/activitystreams',
 			'id' => $note_id . '&type=activity&updated=' . urlencode($updated),
 			'actor' => $actor_url,
 			'published' => $updated,
-			'to' => ['https://www.w3.org/ns/activitystreams#Public'],
-			'cc' => [$followers_url],
+			'to' => $recipients['to'],
+			'cc' => $recipients['cc'],
 			'object' => $note->toArray(),
 		]);
 
@@ -850,6 +1077,7 @@ class EventHandlers extends Base
 		$actor_url = ActorModel::getActorUrl($actor->preferred_username);
 		$note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
 		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
+		$recipients = self::getVisibilityRecipients($actor);
 
 		// Mastodon 스타일 Delete: object에 Tombstone 사용
 		$tombstone = Type::create('Tombstone', [
@@ -860,8 +1088,8 @@ class EventHandlers extends Base
 			'@context' => 'https://www.w3.org/ns/activitystreams',
 			'id' => $note_id . '&type=activity#delete',
 			'actor' => $actor_url,
-			'to' => ['https://www.w3.org/ns/activitystreams#Public'],
-			'cc' => [$followers_url],
+			'to' => $recipients['to'],
+			'cc' => $recipients['cc'],
 			'object' => $tombstone->toArray(),
 		]);
 
@@ -905,6 +1133,7 @@ class EventHandlers extends Base
 		$note_id = ActorModel::getCommentNoteUrl($actor->preferred_username, $comment_srl);
 		$parent_note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
 		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
+		$recipients = self::getVisibilityRecipients($actor);
 
 		$note = Type::create('Note', [
 			'id' => $note_id,
@@ -913,8 +1142,8 @@ class EventHandlers extends Base
 			'content' => $html_content,
 			'url' => $comment_url,
 			'inReplyTo' => $parent_note_id,
-			'to' => ['https://www.w3.org/ns/activitystreams#Public'],
-			'cc' => [$followers_url],
+			'to' => $recipients['to'],
+			'cc' => $recipients['cc'],
 		]);
 
 		$activity = Type::create('Update', [
@@ -922,8 +1151,8 @@ class EventHandlers extends Base
 			'id' => $note_id . '&type=activity&updated=' . urlencode($updated),
 			'actor' => $actor_url,
 			'published' => $updated,
-			'to' => ['https://www.w3.org/ns/activitystreams#Public'],
-			'cc' => [$followers_url],
+			'to' => $recipients['to'],
+			'cc' => $recipients['cc'],
 			'object' => $note->toArray(),
 		]);
 
@@ -947,6 +1176,7 @@ class EventHandlers extends Base
 		$actor_url = ActorModel::getActorUrl($actor->preferred_username);
 		$note_id = ActorModel::getCommentNoteUrl($actor->preferred_username, $comment_srl);
 		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
+		$recipients = self::getVisibilityRecipients($actor);
 
 		$tombstone = Type::create('Tombstone', [
 			'id' => $note_id,
@@ -956,8 +1186,8 @@ class EventHandlers extends Base
 			'@context' => 'https://www.w3.org/ns/activitystreams',
 			'id' => $note_id . '&type=activity#delete',
 			'actor' => $actor_url,
-			'to' => ['https://www.w3.org/ns/activitystreams#Public'],
-			'cc' => [$followers_url],
+			'to' => $recipients['to'],
+			'cc' => $recipients['cc'],
 			'object' => $tombstone->toArray(),
 		]);
 

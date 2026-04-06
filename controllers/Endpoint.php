@@ -241,6 +241,9 @@ class Endpoint extends Base
 					'value' => 'schema:value',
 					'toot' => 'http://joinmastodon.org/ns#',
 					'discoverable' => 'toot:discoverable',
+					'indexable' => 'toot:indexable',
+					'fep-044f' => 'https://w3id.org/fep/044f#',
+					'canQuote' => 'fep-044f:canQuote',
 				],
 			],
 			'id' => $actor_url,
@@ -252,7 +255,8 @@ class Endpoint extends Base
 			'followers' => $followers_url,
 			'following' => $following_url,
 			'url' => $profile_url,
-			'discoverable' => true,
+			'discoverable' => (($actor->discoverable ?? 'Y') === 'Y'),
+			'indexable' => (($actor->indexable ?? 'N') === 'Y'),
 			'published' => self::formatRegdateToIso($actor->regdate),
 			'publicKey' => [
 				'id' => $actor_url . '#main-key',
@@ -263,6 +267,21 @@ class Endpoint extends Base
 				'sharedInbox' => $shared_inbox_url,
 			],
 		]);
+
+		// FEP-044f canQuote 설정
+		$quote_policy = $actor->quote_policy ?? 'nobody';
+		if ($quote_policy === 'public')
+		{
+			$actorType->set('canQuote', 'https://www.w3.org/ns/activitystreams#Public');
+		}
+		elseif ($quote_policy === 'followers')
+		{
+			$actorType->set('canQuote', $followers_url);
+		}
+		elseif ($quote_policy === 'following')
+		{
+			$actorType->set('canQuote', $following_url);
+		}
 
 		if (!empty($attachment))
 		{
@@ -312,6 +331,29 @@ class Endpoint extends Base
 		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
 		$site_url = ActorModel::getSiteUrl();
 		$page = intval(Context::get('page'));
+
+		// visibility에 따른 to/cc 결정
+		$visibility = $actor->visibility ?? 'unlisted';
+		switch ($visibility)
+		{
+			case 'public':
+				$note_to = ['https://www.w3.org/ns/activitystreams#Public'];
+				$note_cc = [$followers_url];
+				break;
+			case 'private':
+				$note_to = [$followers_url];
+				$note_cc = [];
+				break;
+			case 'direct':
+				$note_to = [];
+				$note_cc = [];
+				break;
+			case 'unlisted':
+			default:
+				$note_to = [$followers_url];
+				$note_cc = ['https://www.w3.org/ns/activitystreams#Public'];
+				break;
+		}
 
 		// 페이지 파라미터가 없으면 OrderedCollection 요약 반환
 		if ($page < 1)
@@ -377,8 +419,8 @@ class Endpoint extends Base
 				'attributedTo' => $actor_url,
 				'content' => $html_content,
 				'url' => $document_url,
-				'to' => ['https://www.w3.org/ns/activitystreams#Public'],
-				'cc' => [$followers_url],
+				'to' => $note_to,
+				'cc' => $note_cc,
 			]);
 
 			// 수정일이 있고 등록일과 다르면 updated 필드 추가
@@ -391,8 +433,8 @@ class Endpoint extends Base
 				'id' => $note_id . '&type=activity',
 				'actor' => $actor_url,
 				'published' => $published,
-				'to' => ['https://www.w3.org/ns/activitystreams#Public'],
-				'cc' => [$followers_url],
+				'to' => $note_to,
+				'cc' => $note_cc,
 				'object' => $note->toArray(),
 			]);
 
@@ -629,11 +671,35 @@ class Endpoint extends Base
 	 */
 	protected function buildBaseNoteData($actor, array $extra)
 	{
+		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
+		$visibility = $actor->visibility ?? 'unlisted';
+
+		switch ($visibility)
+		{
+			case 'public':
+				$to = ['https://www.w3.org/ns/activitystreams#Public'];
+				$cc = [$followers_url];
+				break;
+			case 'private':
+				$to = [$followers_url];
+				$cc = [];
+				break;
+			case 'direct':
+				$to = [];
+				$cc = [];
+				break;
+			case 'unlisted':
+			default:
+				$to = [$followers_url];
+				$cc = ['https://www.w3.org/ns/activitystreams#Public'];
+				break;
+		}
+
 		return array_merge([
 			'@context' => 'https://www.w3.org/ns/activitystreams',
 			'attributedTo' => ActorModel::getActorUrl($actor->preferred_username),
-			'to' => ['https://www.w3.org/ns/activitystreams#Public'],
-			'cc' => [ActorModel::getFollowersUrl($actor->preferred_username)],
+			'to' => $to,
+			'cc' => $cc,
 		], $extra);
 	}
 
@@ -768,11 +834,117 @@ class Endpoint extends Base
 				$this->handleUpdate($actor, $payload);
 				break;
 
+			case 'Flag':
+				$this->handleFlag($actor, $payload);
+				break;
+
 			default:
 				self::debugLog('procActivitypubInbox POST: Unhandled activity type: ' . $type);
 				$this->sendJsonResponse(['status' => 'accepted'], 202);
 				break;
 		}
+	}
+
+	/**
+	 * Flag(신고) 요청 처리
+	 * 원격 서버에서 게시물 신고 알림을 받았을 때 라이믹스 신고 기록 생성
+	 *
+	 * @param object $actor 로컬 Actor (수신자)
+	 * @param \ActivityPhp\Type\AbstractObject $payload
+	 */
+	protected function handleFlag($actor, $payload)
+	{
+		self::debugLog('--- handleFlag START ---');
+
+		$reporter_actor_url = $payload->actor ?? '';
+		$content = '';
+
+		// content 추출
+		if (isset($payload->content) && is_string($payload->content))
+		{
+			$content = $payload->content;
+		}
+
+		// object에서 Note URL 추출
+		$objects = $payload->object ?? [];
+		if (is_string($objects))
+		{
+			$objects = [$objects];
+		}
+		elseif ($objects instanceof \ActivityPhp\Type\AbstractObject)
+		{
+			$objects = [$objects->id ?? ''];
+		}
+
+		if (!is_array($objects))
+		{
+			$objects = [];
+		}
+
+		foreach ($objects as $obj_url)
+		{
+			if (!is_string($obj_url) || empty($obj_url))
+			{
+				continue;
+			}
+
+			// URL에서 document_srl 추출
+			$query_string = parse_url($obj_url, PHP_URL_QUERY);
+			if (!$query_string)
+			{
+				continue;
+			}
+
+			parse_str($query_string, $params);
+			$document_srl = intval($params['document_srl'] ?? 0);
+
+			// comment_srl이 있는 경우는 무시 (댓글 신고는 지원하지 않음)
+			if ($document_srl <= 0 || !empty($params['comment_srl']))
+			{
+				continue;
+			}
+
+			// 게시물 존재 확인
+			$oDocument = \DocumentModel::getDocument($document_srl);
+			if (!$oDocument || !$oDocument->document_srl)
+			{
+				continue;
+			}
+
+			// 라이믹스 신고 로그 삽입
+			$declared_text = 'ActivityPub Flag from: ' . $reporter_actor_url;
+			if ($content)
+			{
+				$declared_text .= "\n" . $content;
+			}
+
+			$args = new \stdClass;
+			$args->declared_log_srl = getNextSequence();
+			$args->document_srl = $document_srl;
+			$args->member_srl = 0;
+			$args->declared_type = 'others';
+			$args->declared_text = $declared_text;
+			$args->regdate = date('YmdHis');
+			executeQuery('document.insertDeclaredLog', $args);
+
+			// document_declared 카운트 증가
+			$declared_args = new \stdClass;
+			$declared_args->document_srl = $document_srl;
+			$declared_output = executeQuery('document.getDeclaredDocument', $declared_args);
+			if ($declared_output->toBool() && $declared_output->data)
+			{
+				executeQuery('document.updateDeclaredDocument', $declared_args);
+			}
+			else
+			{
+				executeQuery('document.insertDeclaredDocument', $declared_args);
+			}
+
+			self::debugLog('handleFlag: Reported document_srl=' . $document_srl . ' from ' . $reporter_actor_url);
+		}
+
+		self::debugLog('--- handleFlag END ---');
+		$this->sendJsonResponse(['status' => 'accepted'], 202);
 	}
 
 	/**
@@ -1385,6 +1557,10 @@ class Endpoint extends Base
 				$this->handleUpdate($actor, $payload);
 				break;
 
+			case 'Flag':
+				$this->handleFlag($actor, $payload);
+				break;
+
 			default:
 				self::debugLog('procActivitypubSharedInbox POST: Unhandled activity type: ' . $type);
 				$this->sendJsonResponse(['status' => 'accepted'], 202);
@@ -1445,6 +1621,36 @@ class Endpoint extends Base
 			}
 			self::debugLog('resolveTargetActorFromPayload: ' . $type . ' - no local actor found in to/cc, accepting anyway');
 			// Delete/Update 는 to/cc가 없어도 수락 (202 반환은 호출측에서)
+		}
+		// Flag: object에서 대상 Actor 찾기 (object에 포함된 Note URL로부터)
+		elseif ($type === 'Flag')
+		{
+			$objects = $payload->object ?? [];
+			if (is_string($objects))
+			{
+				$objects = [$objects];
+			}
+			elseif ($objects instanceof \ActivityPhp\Type\AbstractObject)
+			{
+				$objects = [$objects->id ?? ''];
+			}
+			if (is_array($objects))
+			{
+				foreach ($objects as $obj_url)
+				{
+					if (!is_string($obj_url) || empty($obj_url))
+					{
+						continue;
+					}
+					$actor = $this->resolveLocalActorFromUrl($obj_url);
+					if ($actor)
+					{
+						self::debugLog('resolveTargetActorFromPayload: Flag resolved actor from object URL: ' . $actor->preferred_username);
+						return $actor;
+					}
+				}
+			}
+			self::debugLog('resolveTargetActorFromPayload: Flag - no local actor found in object URLs');
 		}
 		else
 		{
