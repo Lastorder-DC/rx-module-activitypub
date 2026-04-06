@@ -116,6 +116,25 @@ class Actor
 	}
 
 	/**
+	 * Actor 프로필 업데이트 (표시 이름, 설명, 아이콘 URL)
+	 *
+	 * @param int $actor_srl
+	 * @param string $display_name
+	 * @param string $summary
+	 * @param string $icon_url
+	 * @return object
+	 */
+	public static function updateActorProfile($actor_srl, $display_name, $summary, $icon_url)
+	{
+		$args = new \stdClass;
+		$args->actor_srl = $actor_srl;
+		$args->display_name = $display_name;
+		$args->summary = $summary;
+		$args->icon_url = $icon_url;
+		return executeQuery('activitypub.updateActorProfile', $args);
+	}
+
+	/**
 	 * Actor 삭제
 	 *
 	 * @param int $actor_srl

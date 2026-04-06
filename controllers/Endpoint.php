@@ -104,40 +104,80 @@ class Endpoint extends Base
 		$actor_url = ActorModel::getActorUrl($actor->preferred_username);
 		$inbox_url = ActorModel::getInboxUrl($actor->preferred_username);
 		$outbox_url = ActorModel::getOutboxUrl($actor->preferred_username);
-		$domain = ActorModel::getSiteDomain();
 
-		// 게시판 이름 가져오기
+		// 게시판 정보 가져오기
 		$mid = ModuleModel::getMidByModuleSrl($actor->module_srl);
 		$module_info = ModuleModel::getModuleInfoByModuleSrl($actor->module_srl);
-		$name = '';
-		if ($module_info)
+		$board_url = ActorModel::getSiteUrl() . '?mid=' . urlencode($mid);
+
+		// 표시 이름: 저장된 값 → 게시판명 → preferred_username 순서로 사용
+		if (!empty($actor->display_name))
 		{
-			$name = $module_info->browser_title ?? $mid;
+			$name = $actor->display_name;
 		}
-		if (!$name)
+		elseif ($module_info && !empty($module_info->browser_title))
+		{
+			$name = $module_info->browser_title;
+		}
+		elseif ($mid)
+		{
+			$name = $mid;
+		}
+		else
 		{
 			$name = $actor->preferred_username;
+		}
+
+		// 설명: 저장된 값 → 게시판 설명 순서로 사용
+		if (!empty($actor->summary))
+		{
+			$summary = $actor->summary;
+		}
+		elseif ($module_info && !empty($module_info->description))
+		{
+			$summary = $module_info->description;
+		}
+		else
+		{
+			$summary = '';
 		}
 
 		$response = [
 			'@context' => [
 				'https://www.w3.org/ns/activitystreams',
 				'https://w3id.org/security/v1',
+				['schema' => 'http://schema.org#', 'PropertyValue' => 'schema:PropertyValue', 'value' => 'schema:value'],
 			],
 			'id' => $actor_url,
 			'type' => 'Service',
 			'preferredUsername' => $actor->preferred_username,
 			'name' => $name,
-			'summary' => $module_info->description ?? '',
+			'summary' => $summary,
 			'inbox' => $inbox_url,
 			'outbox' => $outbox_url,
-			'url' => ActorModel::getSiteUrl() . '?mid=' . urlencode($mid),
+			'url' => $board_url,
+			'attachment' => [
+				[
+					'type' => 'PropertyValue',
+					'name' => 'Board',
+					'value' => '<a href="' . htmlspecialchars($board_url, ENT_QUOTES, 'UTF-8') . '" rel="me nofollow noopener noreferrer" target="_blank">' . htmlspecialchars($board_url, ENT_QUOTES, 'UTF-8') . '</a>',
+				],
+			],
 			'publicKey' => [
 				'id' => $actor_url . '#main-key',
 				'owner' => $actor_url,
 				'publicKeyPem' => $actor->public_key,
 			],
 		];
+
+		// 프로필 이미지가 설정된 경우 icon 필드 추가
+		if (!empty($actor->icon_url))
+		{
+			$response['icon'] = [
+				'type' => 'Image',
+				'url' => $actor->icon_url,
+			];
+		}
 
 		$this->sendJsonResponse($response, 200, 'application/activity+json');
 	}

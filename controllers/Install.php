@@ -27,6 +27,11 @@ class Install extends Base
 	 */
 	public function checkUpdate()
 	{
+		$oDB = \DB::getInstance();
+		if (!$oDB->isColumnExists('activitypub_actors', 'display_name'))
+		{
+			return true;
+		}
 		return false;
 	}
 
@@ -37,7 +42,20 @@ class Install extends Base
 	 */
 	public function moduleUpdate()
 	{
-
+		$oDB = \DB::getInstance();
+		if (!$oDB->isColumnExists('activitypub_actors', 'display_name'))
+		{
+			$oDB->addColumn('activitypub_actors', 'display_name', 'varchar', 255, null, false, 'preferred_username');
+		}
+		if (!$oDB->isColumnExists('activitypub_actors', 'summary'))
+		{
+			$oDB->addColumn('activitypub_actors', 'summary', 'bigtext', null, null, false, 'display_name');
+		}
+		if (!$oDB->isColumnExists('activitypub_actors', 'icon_url'))
+		{
+			$oDB->addColumn('activitypub_actors', 'icon_url', 'varchar', 500, null, false, 'summary');
+		}
+		return new \BaseObject();
 	}
 
 	/**

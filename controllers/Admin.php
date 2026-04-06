@@ -121,4 +121,79 @@ class Admin extends Base
 		$this->setMessage('success_registed');
 		$this->setRedirectUrl(Context::get('success_return_url'));
 	}
+
+	/**
+	 * Actor 프로필 편집 화면
+	 */
+	public function dispActivitypubAdminActorEdit()
+	{
+		$actor_srl = intval(Context::get('actor_srl'));
+		if (!$actor_srl)
+		{
+			return new \BaseObject(-1, 'msg_invalid_request');
+		}
+
+		$actor = ActorModel::getActor($actor_srl);
+		if (!$actor)
+		{
+			return new \BaseObject(-1, 'msg_not_founded');
+		}
+
+		$actor->mid = ModuleModel::getMidByModuleSrl($actor->module_srl);
+		$module_info = ModuleModel::getModuleInfoByModuleSrl($actor->module_srl);
+
+		// 이름/설명 기본값(게시판명, 게시판 설명)
+		$default_name = '';
+		$default_summary = '';
+		if ($module_info)
+		{
+			$default_name = $module_info->browser_title ?? $actor->mid;
+			$default_summary = $module_info->description ?? '';
+		}
+
+		Context::set('actor', $actor);
+		Context::set('default_name', $default_name);
+		Context::set('default_summary', $default_summary);
+		Context::set('site_domain', ActorModel::getSiteDomain());
+
+		$this->setTemplateFile('actor_edit');
+	}
+
+	/**
+	 * Actor 프로필 저장 액션
+	 */
+	public function procActivitypubAdminUpdateActorProfile()
+	{
+		$vars = Context::getRequestVars();
+		$actor_srl = intval($vars->actor_srl ?? 0);
+		if (!$actor_srl)
+		{
+			return new \BaseObject(-1, 'msg_invalid_request');
+		}
+
+		$actor = ActorModel::getActor($actor_srl);
+		if (!$actor)
+		{
+			return new \BaseObject(-1, 'msg_not_founded');
+		}
+
+		$display_name = trim($vars->display_name ?? '');
+		$summary = trim($vars->summary ?? '');
+		$icon_url = trim($vars->icon_url ?? '');
+
+		// icon_url이 입력된 경우 유효한 URL인지 확인
+		if ($icon_url !== '' && !filter_var($icon_url, FILTER_VALIDATE_URL))
+		{
+			return new \BaseObject(-1, 'msg_activitypub_invalid_icon_url');
+		}
+
+		$output = ActorModel::updateActorProfile($actor_srl, $display_name, $summary, $icon_url);
+		if (!$output->toBool())
+		{
+			return $output;
+		}
+
+		$this->setMessage('success_registed');
+		$this->setRedirectUrl(getNotEncodedUrl('', 'module', 'admin', 'act', 'dispActivitypubAdminConfig'));
+	}
 }

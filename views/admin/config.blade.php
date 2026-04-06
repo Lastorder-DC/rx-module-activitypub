@@ -74,6 +74,7 @@
 				<th>module_srl</th>
 				<th>{{ $lang->cmd_activitypub_actor_address }}</th>
 				<th>{{ $lang->cmd_activitypub_actor_regdate }}</th>
+				<th></th>
 			</tr>
 		</thead>
 		<tbody>
@@ -84,6 +85,7 @@
 				<td>{{ $actor->module_srl }}</td>
 				<td>@{{ $actor->preferred_username }}@{{ $site_domain }}</td>
 				<td>{{ $actor->regdate }}</td>
+				<td><a href="@url(['module' => 'admin', 'act' => 'dispActivitypubAdminActorEdit', 'actor_srl' => $actor->actor_srl])" class="x_btn x_btn-small">{{ $lang->cmd_activitypub_actor_edit }}</a></td>
 			</tr>
 			@endforeach
 		</tbody>
