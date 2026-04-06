@@ -428,50 +428,75 @@ class Endpoint extends Base
 	 */
 	public function dispActivitypubNote()
 	{
+		self::debugLog('=== dispActivitypubNote START ===');
+		self::debugLog('REQUEST_METHOD: ' . ($_SERVER['REQUEST_METHOD'] ?? '(none)'));
+		self::debugLog('REQUEST_URI: ' . ($_SERVER['REQUEST_URI'] ?? '(none)'));
+		self::debugLog('HTTP_ACCEPT: ' . ($_SERVER['HTTP_ACCEPT'] ?? '(none)'));
+		self::debugLog('HTTP_SIGNATURE: ' . ($_SERVER['HTTP_SIGNATURE'] ?? '(none)'));
+		self::debugLog('HTTP_HOST: ' . ($_SERVER['HTTP_HOST'] ?? '(none)'));
+		self::debugLog('HTTP_DATE: ' . ($_SERVER['HTTP_DATE'] ?? '(none)'));
+		self::debugLog('HTTP_USER_AGENT: ' . ($_SERVER['HTTP_USER_AGENT'] ?? '(none)'));
+
 		// Authorized Fetch 모드일 경우 HTTP Signature 검증
 		if (!$this->checkAuthorizedFetch())
 		{
+			self::debugLog('[dispActivitypubNote] checkAuthorizedFetch() FAILED - returning 401');
 			return;
 		}
+		self::debugLog('[dispActivitypubNote] checkAuthorizedFetch() PASSED');
 
 		$preferred_username = Context::get('preferred_username');
 		if (!$preferred_username)
 		{
+			self::debugLog('[dispActivitypubNote] Missing preferred_username - returning 400');
 			$this->sendJsonResponse(['error' => 'Missing username'], 400);
 			return;
 		}
+		self::debugLog('[dispActivitypubNote] preferred_username=' . $preferred_username);
 
 		$actor = ActorModel::getActiveActorByPreferredUsername($preferred_username);
 		if (!$actor)
 		{
+			self::debugLog('[dispActivitypubNote] Actor not found for username=' . $preferred_username . ' - returning 404');
 			$this->sendJsonResponse(['error' => 'Unknown user'], 404);
 			return;
 		}
+		self::debugLog('[dispActivitypubNote] Actor found: actor_srl=' . ($actor->actor_srl ?? '(null)') . ', type=' . ($actor->actor_type ?? '(null)'));
 
 		$document_srl = intval(Context::get('document_srl'));
 		$comment_srl = intval(Context::get('comment_srl'));
+		self::debugLog('[dispActivitypubNote] document_srl=' . $document_srl . ', comment_srl=' . $comment_srl);
 
 		if ($comment_srl > 0)
 		{
+			self::debugLog('[dispActivitypubNote] Building comment note data for comment_srl=' . $comment_srl);
 			$note_data = $this->buildCommentNoteData($actor, $comment_srl);
 		}
 		elseif ($document_srl > 0)
 		{
+			self::debugLog('[dispActivitypubNote] Building document note data for document_srl=' . $document_srl);
 			$note_data = $this->buildDocumentNoteData($actor, $document_srl);
 		}
 		else
 		{
+			self::debugLog('[dispActivitypubNote] Missing document_srl and comment_srl - returning 400');
 			$this->sendJsonResponse(['error' => 'Missing document_srl or comment_srl'], 400);
 			return;
 		}
 
 		if (!$note_data)
 		{
+			self::debugLog('[dispActivitypubNote] note_data is null/empty - returning 404');
 			$this->sendJsonResponse(['error' => 'Not found'], 404);
 			return;
 		}
 
+		self::debugLog('[dispActivitypubNote] note_data keys: ' . implode(', ', array_keys($note_data)));
+		self::debugLog('[dispActivitypubNote] note id=' . ($note_data['id'] ?? '(none)'));
+		self::debugLog('[dispActivitypubNote] note url=' . ($note_data['url'] ?? '(none)'));
+
 		$note = Type::create('Note', $note_data);
+		self::debugLog('[dispActivitypubNote] Sending Note response');
 		$this->sendActivityResponse($note);
 	}
 
@@ -484,24 +509,32 @@ class Endpoint extends Base
 	 */
 	protected function buildDocumentNoteData($actor, $document_srl)
 	{
+		self::debugLog('[buildDocumentNoteData] Start: actor=' . $actor->preferred_username . ', document_srl=' . $document_srl);
+
 		$oDocument = \DocumentModel::getDocument($document_srl);
 		if (!$oDocument || !$oDocument->document_srl)
 		{
+			self::debugLog('[buildDocumentNoteData] Document not found or empty: document_srl=' . $document_srl);
 			return null;
 		}
+		self::debugLog('[buildDocumentNoteData] Document loaded: document_srl=' . $oDocument->document_srl . ', module_srl=' . ($oDocument->module_srl ?? '(null)'));
 
 		// 공개 글만 처리
 		$status = $oDocument->status ?? '';
 		if ($status !== 'PUBLIC' && $status !== '')
 		{
+			self::debugLog('[buildDocumentNoteData] Document not public: status=' . $status . ' - returning null');
 			return null;
 		}
+		self::debugLog('[buildDocumentNoteData] Document status OK: status=' . ($status ?: '(empty)'));
 
 		// 비공개 게시판 제외
 		if (!ActorModel::isModulePubliclyAccessible($oDocument->module_srl))
 		{
+			self::debugLog('[buildDocumentNoteData] Module not publicly accessible: module_srl=' . $oDocument->module_srl . ' - returning null');
 			return null;
 		}
+		self::debugLog('[buildDocumentNoteData] Module publicly accessible: module_srl=' . $oDocument->module_srl);
 
 		$site_url = ActorModel::getSiteUrl();
 		$mid = ModuleModel::getMidByModuleSrl($oDocument->module_srl);
@@ -527,6 +560,7 @@ class Endpoint extends Base
 			$note_data['updated'] = self::formatRegdateToIso($oDocument->last_update);
 		}
 
+		self::debugLog('[buildDocumentNoteData] Success: note_id=' . ($note_data['id'] ?? '(none)') . ', url=' . $document_url . ', title=' . mb_substr($title, 0, 50));
 		return $note_data;
 	}
 
@@ -539,21 +573,27 @@ class Endpoint extends Base
 	 */
 	protected function buildCommentNoteData($actor, $comment_srl)
 	{
+		self::debugLog('[buildCommentNoteData] Start: actor=' . $actor->preferred_username . ', comment_srl=' . $comment_srl);
+
 		$comment = \CommentModel::getComment($comment_srl);
 		if (!$comment || !$comment->comment_srl)
 		{
+			self::debugLog('[buildCommentNoteData] Comment not found: comment_srl=' . $comment_srl);
 			return null;
 		}
+		self::debugLog('[buildCommentNoteData] Comment loaded: comment_srl=' . $comment->comment_srl . ', document_srl=' . ($comment->document_srl ?? '(null)') . ', module_srl=' . ($comment->module_srl ?? '(null)'));
 
 		// 비밀 댓글 제외
 		if (($comment->is_secret ?? '') === 'Y')
 		{
+			self::debugLog('[buildCommentNoteData] Secret comment - returning null');
 			return null;
 		}
 
 		// 비공개 게시판 제외
 		if (!ActorModel::isModulePubliclyAccessible($comment->module_srl))
 		{
+			self::debugLog('[buildCommentNoteData] Module not publicly accessible: module_srl=' . $comment->module_srl . ' - returning null');
 			return null;
 		}
 
@@ -568,13 +608,16 @@ class Endpoint extends Base
 		$html_content = '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
 		$html_content .= '<p><a href="' . htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
 
-		return $this->buildBaseNoteData($actor, [
+		$note_data = $this->buildBaseNoteData($actor, [
 			'id' => ActorModel::getCommentNoteUrl($actor->preferred_username, $comment_srl),
 			'published' => self::formatRegdateToIso($comment->regdate ?? ''),
 			'content' => $html_content,
 			'url' => $comment_url,
 			'inReplyTo' => ActorModel::getNoteUrl($actor->preferred_username, $document_srl),
 		]);
+
+		self::debugLog('[buildCommentNoteData] Success: note_id=' . ($note_data['id'] ?? '(none)') . ', url=' . $comment_url);
+		return $note_data;
 	}
 
 	/**
@@ -1527,9 +1570,11 @@ class Endpoint extends Base
 	 */
 	protected function sendActivityResponse($type, $status_code = 200)
 	{
+		$json = $type->toJson(JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+		self::debugLog('[sendActivityResponse] HTTP ' . $status_code . ', type=' . ($type->type ?? '(unknown)') . ', response (first 500 chars): ' . mb_substr($json, 0, 500));
 		http_response_code($status_code);
 		header('Content-Type: application/activity+json; charset=utf-8');
-		echo $type->toJson(JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+		echo $json;
 		exit;
 	}
 
@@ -1542,6 +1587,10 @@ class Endpoint extends Base
 	 */
 	protected function sendJsonResponse($data, $status_code = 200, $content_type = 'application/json')
 	{
+		if ($status_code >= 400)
+		{
+			self::debugLog('[sendJsonResponse] Error response: HTTP ' . $status_code . ', data=' . json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+		}
 		http_response_code($status_code);
 		header('Content-Type: ' . $content_type . '; charset=utf-8');
 		echo json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
