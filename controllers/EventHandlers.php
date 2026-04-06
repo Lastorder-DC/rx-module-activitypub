@@ -253,17 +253,22 @@ class EventHandlers extends Base
 	 */
 	public static function processDocumentDeliveryTask($args, $options = null)
 	{
+		self::debugLog('[processDocumentDeliveryTask] Called with actor_srl=' . ($args->actor_srl ?? 'null') . ', document_srl=' . ($args->document_srl ?? 'null') . ', module_srl=' . ($args->module_srl ?? 'null'));
+
 		if (!$args || !isset($args->actor_srl) || !isset($args->document_srl))
 		{
+			self::debugLog('[processDocumentDeliveryTask] Invalid args, returning');
 			return;
 		}
 
 		$actor = ActorModel::getActor($args->actor_srl);
 		if (!$actor)
 		{
+			self::debugLog('[processDocumentDeliveryTask] Actor not found for actor_srl=' . $args->actor_srl);
 			return;
 		}
 
+		self::debugLog('[processDocumentDeliveryTask] Delivering document_srl=' . $args->document_srl . ' via actor=' . $actor->preferred_username);
 		self::deliverDocumentToFollowers($actor, $args);
 	}
 
@@ -275,17 +280,22 @@ class EventHandlers extends Base
 	 */
 	public static function processCommentDeliveryTask($args, $options = null)
 	{
+		self::debugLog('[processCommentDeliveryTask] Called with actor_srl=' . ($args->actor_srl ?? 'null') . ', comment_srl=' . ($args->comment_srl ?? 'null') . ', document_srl=' . ($args->document_srl ?? 'null') . ', module_srl=' . ($args->module_srl ?? 'null'));
+
 		if (!$args || !isset($args->actor_srl) || !isset($args->comment_srl))
 		{
+			self::debugLog('[processCommentDeliveryTask] Invalid args, returning');
 			return;
 		}
 
 		$actor = ActorModel::getActor($args->actor_srl);
 		if (!$actor)
 		{
+			self::debugLog('[processCommentDeliveryTask] Actor not found for actor_srl=' . $args->actor_srl);
 			return;
 		}
 
+		self::debugLog('[processCommentDeliveryTask] Delivering comment_srl=' . $args->comment_srl . ' via actor=' . $actor->preferred_username);
 		self::deliverCommentToFollowers($actor, $args);
 	}
 
@@ -297,6 +307,8 @@ class EventHandlers extends Base
 	 */
 	protected static function deliverDocumentToFollowers($actor, $document)
 	{
+		self::debugLog('[deliverDocumentToFollowers] Start: actor=' . $actor->preferred_username . ', document_srl=' . $document->document_srl);
+
 		TypeConfiguration::set('undefined_properties', 'include');
 
 		$site_url = ActorModel::getSiteUrl();
@@ -347,6 +359,8 @@ class EventHandlers extends Base
 			'object' => $note->toArray(),
 		]);
 
+		self::debugLog('[deliverDocumentToFollowers] Activity created: note_id=' . $note_id . ', calling deliverToFollowers');
+
 		// 팔로워에게 전송
 		self::deliverToFollowers($actor, $activity);
 	}
@@ -359,6 +373,8 @@ class EventHandlers extends Base
 	 */
 	protected static function deliverCommentToFollowers($actor, $comment)
 	{
+		self::debugLog('[deliverCommentToFollowers] Start: actor=' . $actor->preferred_username . ', comment_srl=' . $comment->comment_srl . ', document_srl=' . $comment->document_srl);
+
 		TypeConfiguration::set('undefined_properties', 'include');
 
 		$site_url = ActorModel::getSiteUrl();
@@ -408,6 +424,8 @@ class EventHandlers extends Base
 			'object' => $note->toArray(),
 		]);
 
+		self::debugLog('[deliverCommentToFollowers] Activity created: note_id=' . $note_id . ', calling deliverToFollowers');
+
 		self::deliverToFollowers($actor, $activity);
 	}
 
@@ -422,11 +440,14 @@ class EventHandlers extends Base
 		$followers_output = ActorModel::getFollowers($actor->actor_srl);
 		if (!$followers_output->toBool() || empty($followers_output->data))
 		{
+			self::debugLog('[deliverToFollowers] No followers found for actor_srl=' . $actor->actor_srl);
 			return;
 		}
 
 		$followers = is_array($followers_output->data) ? $followers_output->data : [$followers_output->data];
 		$body = $activity->toJson(JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+		self::debugLog('[deliverToFollowers] Delivering to ' . count($followers) . ' follower(s) for actor_srl=' . $actor->actor_srl);
 
 		// Shared inbox 를 사용하여 중복 전송 방지
 		$delivered_inboxes = [];
@@ -435,10 +456,12 @@ class EventHandlers extends Base
 			$inbox_url = $follower->follower_shared_inbox_url ?: $follower->follower_inbox_url;
 			if (in_array($inbox_url, $delivered_inboxes))
 			{
+				self::debugLog('[deliverToFollowers] Skipping duplicate inbox: ' . $inbox_url);
 				continue;
 			}
 			$delivered_inboxes[] = $inbox_url;
 
+			self::debugLog('[deliverToFollowers] Sending to inbox: ' . $inbox_url);
 			self::sendSignedRequest($actor, $inbox_url, $body);
 		}
 	}
@@ -456,6 +479,7 @@ class EventHandlers extends Base
 		$parsed = parse_url($url);
 		if (!$parsed || !isset($parsed['host']))
 		{
+			self::debugLog('[sendSignedRequest] Invalid URL: ' . $url);
 			return false;
 		}
 
@@ -482,6 +506,7 @@ class EventHandlers extends Base
 		$private_key = openssl_pkey_get_private($actor->private_key);
 		if (!$private_key)
 		{
+			self::debugLog('[sendSignedRequest] Failed to load private key for actor=' . $actor->preferred_username);
 			return false;
 		}
 
@@ -489,6 +514,7 @@ class EventHandlers extends Base
 		$success = openssl_sign($signing_string, $signature, $private_key, OPENSSL_ALGO_SHA256);
 		if (!$success)
 		{
+			self::debugLog('[sendSignedRequest] Failed to sign request for URL: ' . $url);
 			return false;
 		}
 
@@ -520,8 +546,19 @@ class EventHandlers extends Base
 
 		$response = curl_exec($ch);
 		$http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		$curl_error = curl_error($ch);
 		curl_close($ch);
 
-		return ($http_code >= 200 && $http_code < 300);
+		$result = ($http_code >= 200 && $http_code < 300);
+		if ($result)
+		{
+			self::debugLog('[sendSignedRequest] Success: URL=' . $url . ', HTTP ' . $http_code);
+		}
+		else
+		{
+			self::debugLog('[sendSignedRequest] Failed: URL=' . $url . ', HTTP ' . $http_code . ', curl_error=' . $curl_error . ', response=' . mb_substr($response ?: '', 0, 200));
+		}
+
+		return $result;
 	}
 }
