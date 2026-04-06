@@ -33,6 +33,12 @@ class EventHandlers extends Base
 			return;
 		}
 
+		// 비로그인 상태로 접속 불가능한 게시판의 게시물은 AP로 발행하지 않음
+		if (!ActorModel::isModulePubliclyAccessible($obj->module_srl))
+		{
+			return;
+		}
+
 		// 해당 게시물에 대한 모든 Actor 가져오기 (게시판 Actor + 유저 Actor)
 		$member_srl = $obj->member_srl ?? 0;
 		$actors = ActorModel::getActorsForDocument($obj->module_srl, $member_srl);
@@ -76,6 +82,12 @@ class EventHandlers extends Base
 
 		// 승인되지 않은 댓글 제외 (status 0 = 미승인)
 		if (isset($obj->status) && intval($obj->status) === 0)
+		{
+			return;
+		}
+
+		// 비로그인 상태로 접속 불가능한 게시판의 댓글은 AP로 발행하지 않음
+		if (!ActorModel::isModulePubliclyAccessible($obj->module_srl))
 		{
 			return;
 		}

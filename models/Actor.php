@@ -581,4 +581,82 @@ class Actor
 	{
 		return self::getSiteUrl() . '?module=activitypub&act=dispActivitypubOutbox&preferred_username=' . urlencode($preferred_username);
 	}
+
+	/**
+	 * Actor의 Followers URL 가져오기
+	 *
+	 * @param string $preferred_username
+	 * @return string
+	 */
+	public static function getFollowersUrl($preferred_username)
+	{
+		return self::getSiteUrl() . '?module=activitypub&act=dispActivitypubFollowers&preferred_username=' . urlencode($preferred_username);
+	}
+
+	/**
+	 * Actor의 Following URL 가져오기
+	 *
+	 * @param string $preferred_username
+	 * @return string
+	 */
+	public static function getFollowingUrl($preferred_username)
+	{
+		return self::getSiteUrl() . '?module=activitypub&act=dispActivitypubFollowing&preferred_username=' . urlencode($preferred_username);
+	}
+
+	/**
+	 * 공유 Inbox URL 가져오기
+	 *
+	 * @return string
+	 */
+	public static function getSharedInboxUrl()
+	{
+		return self::getSiteUrl() . '?module=activitypub&act=procActivitypubSharedInbox';
+	}
+
+	/**
+	 * 모듈(게시판)이 비로그인 사용자에게 공개되어 있는지 확인
+	 *
+	 * 게시판 접속/읽기 권한이 로그인된 사용자만 가능하거나
+	 * 상담 게시판인 경우 false를 반환합니다.
+	 *
+	 * @param int $module_srl
+	 * @return bool
+	 */
+	public static function isModulePubliclyAccessible($module_srl)
+	{
+		$module_info = ModuleModel::getModuleInfoByModuleSrl($module_srl);
+		if (!$module_info)
+		{
+			return false;
+		}
+
+		// 상담 게시판 제외
+		if (!empty($module_info->consultation) && $module_info->consultation === 'Y')
+		{
+			return false;
+		}
+
+		// 비로그인 사용자(게스트)에 대한 접근 권한 확인
+		$oModuleModel = getModel('module');
+		$guest = new \stdClass();
+		$guest->member_srl = 0;
+		$guest->is_admin = 'N';
+		$guest->group_list = [];
+		$grant = $oModuleModel->getGrant($module_info, $guest);
+
+		// 접속 권한이 없으면 비공개
+		if (empty($grant->access))
+		{
+			return false;
+		}
+
+		// 읽기(view) 권한이 없으면 비공개
+		if (empty($grant->view))
+		{
+			return false;
+		}
+
+		return true;
+	}
 }

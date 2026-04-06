@@ -3,6 +3,7 @@
 namespace Rhymix\Modules\Activitypub\Controllers;
 
 use Rhymix\Modules\Activitypub\Models\Actor as ActorModel;
+use Rhymix\Modules\Activitypub\Models\Config as ConfigModel;
 use Context;
 use ModuleModel;
 
@@ -14,6 +15,11 @@ use ModuleModel;
  */
 class Endpoint extends Base
 {
+	/**
+	 * HTTP Signature의 최대 유효 시간 (초 단위, 12시간)
+	 */
+	const HTTP_SIGNATURE_MAX_AGE = 43200;
+
 	/**
 	 * 초기화
 	 */
@@ -87,6 +93,12 @@ class Endpoint extends Base
 	 */
 	public function dispActivitypubActor()
 	{
+		// Authorized Fetch 모드일 경우 HTTP Signature 검증
+		if (!$this->checkAuthorizedFetch())
+		{
+			return;
+		}
+
 		$preferred_username = Context::get('preferred_username');
 		if (!$preferred_username)
 		{
@@ -104,6 +116,9 @@ class Endpoint extends Base
 		$actor_url = ActorModel::getActorUrl($actor->preferred_username);
 		$inbox_url = ActorModel::getInboxUrl($actor->preferred_username);
 		$outbox_url = ActorModel::getOutboxUrl($actor->preferred_username);
+		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
+		$following_url = ActorModel::getFollowingUrl($actor->preferred_username);
+		$shared_inbox_url = ActorModel::getSharedInboxUrl();
 		$actor_type = $actor->actor_type ?? 'board';
 
 		// Actor 타입에 따라 기본값 결정
@@ -205,7 +220,13 @@ class Endpoint extends Base
 			'@context' => [
 				'https://www.w3.org/ns/activitystreams',
 				'https://w3id.org/security/v1',
-				['schema' => 'http://schema.org#', 'PropertyValue' => 'schema:PropertyValue', 'value' => 'schema:value'],
+				[
+					'schema' => 'http://schema.org#',
+					'PropertyValue' => 'schema:PropertyValue',
+					'value' => 'schema:value',
+					'toot' => 'http://joinmastodon.org/ns#',
+					'discoverable' => 'toot:discoverable',
+				],
 			],
 			'id' => $actor_url,
 			'type' => $ap_type,
@@ -214,11 +235,18 @@ class Endpoint extends Base
 			'summary' => $summary,
 			'inbox' => $inbox_url,
 			'outbox' => $outbox_url,
+			'followers' => $followers_url,
+			'following' => $following_url,
 			'url' => $profile_url,
+			'discoverable' => true,
+			'published' => self::formatRegdateToIso($actor->regdate),
 			'publicKey' => [
 				'id' => $actor_url . '#main-key',
 				'owner' => $actor_url,
 				'publicKeyPem' => $actor->public_key,
+			],
+			'endpoints' => [
+				'sharedInbox' => $shared_inbox_url,
 			],
 		];
 
@@ -244,6 +272,12 @@ class Endpoint extends Base
 	 */
 	public function dispActivitypubOutbox()
 	{
+		// Authorized Fetch 모드일 경우 HTTP Signature 검증
+		if (!$this->checkAuthorizedFetch())
+		{
+			return;
+		}
+
 		$preferred_username = Context::get('preferred_username');
 		if (!$preferred_username)
 		{
@@ -274,11 +308,52 @@ class Endpoint extends Base
 	}
 
 	/**
-	 * Inbox 엔드포인트 (POST)
-	 * Follow/Undo 요청 처리
+	 * Inbox 엔드포인트 (GET/POST)
+	 * GET: Inbox 컬렉션 반환
+	 * POST: Follow/Undo 요청 처리
 	 */
 	public function procActivitypubInbox()
 	{
+		$method = $_SERVER['REQUEST_METHOD'] ?? 'POST';
+
+		// GET 요청: Inbox 컬렉션 반환
+		if ($method === 'GET')
+		{
+			// Authorized Fetch 모드일 경우 HTTP Signature 검증
+			if (!$this->checkAuthorizedFetch())
+			{
+				return;
+			}
+
+			$preferred_username = Context::get('preferred_username');
+			if (!$preferred_username)
+			{
+				$this->sendJsonResponse(['error' => 'Missing username'], 400);
+				return;
+			}
+
+			$actor = ActorModel::getActiveActorByPreferredUsername($preferred_username);
+			if (!$actor)
+			{
+				$this->sendJsonResponse(['error' => 'Unknown user'], 404);
+				return;
+			}
+
+			$inbox_url = ActorModel::getInboxUrl($actor->preferred_username);
+
+			$response = [
+				'@context' => 'https://www.w3.org/ns/activitystreams',
+				'id' => $inbox_url,
+				'type' => 'OrderedCollection',
+				'totalItems' => 0,
+				'orderedItems' => [],
+			];
+
+			$this->sendJsonResponse($response, 200, 'application/activity+json');
+			return;
+		}
+
+		// POST 요청: Activity 처리
 		$preferred_username = Context::get('preferred_username');
 		if (!$preferred_username)
 		{
@@ -517,6 +592,364 @@ class Endpoint extends Base
 		curl_close($ch);
 
 		return ($http_code >= 200 && $http_code < 300);
+	}
+
+	/**
+	 * Followers 컬렉션 엔드포인트
+	 */
+	public function dispActivitypubFollowers()
+	{
+		// Authorized Fetch 모드일 경우 HTTP Signature 검증
+		if (!$this->checkAuthorizedFetch())
+		{
+			return;
+		}
+
+		$preferred_username = Context::get('preferred_username');
+		if (!$preferred_username)
+		{
+			$this->sendJsonResponse(['error' => 'Missing username'], 400);
+			return;
+		}
+
+		$actor = ActorModel::getActiveActorByPreferredUsername($preferred_username);
+		if (!$actor)
+		{
+			$this->sendJsonResponse(['error' => 'Unknown user'], 404);
+			return;
+		}
+
+		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
+
+		// 팔로워 수 가져오기
+		$followers_output = ActorModel::getFollowers($actor->actor_srl);
+		$total_items = 0;
+		if ($followers_output->toBool() && !empty($followers_output->data))
+		{
+			$followers = is_array($followers_output->data) ? $followers_output->data : [$followers_output->data];
+			$total_items = count($followers);
+		}
+
+		$response = [
+			'@context' => 'https://www.w3.org/ns/activitystreams',
+			'id' => $followers_url,
+			'type' => 'OrderedCollection',
+			'totalItems' => $total_items,
+		];
+
+		$this->sendJsonResponse($response, 200, 'application/activity+json');
+	}
+
+	/**
+	 * Following 컬렉션 엔드포인트
+	 */
+	public function dispActivitypubFollowing()
+	{
+		// Authorized Fetch 모드일 경우 HTTP Signature 검증
+		if (!$this->checkAuthorizedFetch())
+		{
+			return;
+		}
+
+		$preferred_username = Context::get('preferred_username');
+		if (!$preferred_username)
+		{
+			$this->sendJsonResponse(['error' => 'Missing username'], 400);
+			return;
+		}
+
+		$actor = ActorModel::getActiveActorByPreferredUsername($preferred_username);
+		if (!$actor)
+		{
+			$this->sendJsonResponse(['error' => 'Unknown user'], 404);
+			return;
+		}
+
+		$following_url = ActorModel::getFollowingUrl($actor->preferred_username);
+
+		// 이 서버에서는 다른 Actor를 팔로우하지 않으므로 항상 빈 컬렉션
+		$response = [
+			'@context' => 'https://www.w3.org/ns/activitystreams',
+			'id' => $following_url,
+			'type' => 'OrderedCollection',
+			'totalItems' => 0,
+		];
+
+		$this->sendJsonResponse($response, 200, 'application/activity+json');
+	}
+
+	/**
+	 * 공유 Inbox 엔드포인트 (GET/POST)
+	 * GET: 빈 OrderedCollection 반환
+	 * POST: Activity 처리 (대상 Actor를 payload에서 판별)
+	 */
+	public function procActivitypubSharedInbox()
+	{
+		$method = $_SERVER['REQUEST_METHOD'] ?? 'POST';
+
+		// GET 요청: 빈 OrderedCollection 반환
+		if ($method === 'GET')
+		{
+			// Authorized Fetch 모드일 경우 HTTP Signature 검증
+			if (!$this->checkAuthorizedFetch())
+			{
+				return;
+			}
+
+			$shared_inbox_url = ActorModel::getSharedInboxUrl();
+
+			$response = [
+				'@context' => 'https://www.w3.org/ns/activitystreams',
+				'id' => $shared_inbox_url,
+				'type' => 'OrderedCollection',
+				'totalItems' => 0,
+				'orderedItems' => [],
+			];
+
+			$this->sendJsonResponse($response, 200, 'application/activity+json');
+			return;
+		}
+
+		// POST 요청: Activity 처리
+		$raw_body = file_get_contents('php://input');
+		if (!$raw_body)
+		{
+			$this->sendJsonResponse(['error' => 'Empty body'], 400);
+			return;
+		}
+
+		$payload = json_decode($raw_body, true);
+		if (!$payload || !isset($payload['type']))
+		{
+			$this->sendJsonResponse(['error' => 'Invalid JSON'], 400);
+			return;
+		}
+
+		// payload에서 대상 Actor 결정
+		$actor = $this->resolveTargetActorFromPayload($payload);
+		if (!$actor)
+		{
+			$this->sendJsonResponse(['status' => 'accepted'], 202);
+			return;
+		}
+
+		$type = $payload['type'];
+
+		switch ($type)
+		{
+			case 'Follow':
+				$this->handleFollow($actor, $payload);
+				break;
+
+			case 'Undo':
+				$this->handleUndo($actor, $payload);
+				break;
+
+			default:
+				$this->sendJsonResponse(['status' => 'accepted'], 202);
+				break;
+		}
+	}
+
+	/**
+	 * Activity payload에서 대상 Actor를 결정
+	 *
+	 * @param array $payload
+	 * @return object|null
+	 */
+	protected function resolveTargetActorFromPayload($payload)
+	{
+		$type = $payload['type'] ?? '';
+		$target_url = '';
+
+		// Follow: object가 대상 Actor URL
+		if ($type === 'Follow')
+		{
+			$target_url = is_string($payload['object'] ?? null) ? $payload['object'] : '';
+		}
+		// Undo: 내부 object에서 대상 찾기
+		elseif ($type === 'Undo' && is_array($payload['object'] ?? null))
+		{
+			$inner = $payload['object'];
+			if (($inner['type'] ?? '') === 'Follow')
+			{
+				$target_url = is_string($inner['object'] ?? null) ? $inner['object'] : '';
+			}
+		}
+
+		if (!$target_url)
+		{
+			return null;
+		}
+
+		// URL에서 preferred_username 추출
+		$query_string = parse_url($target_url, PHP_URL_QUERY);
+		if (!$query_string)
+		{
+			return null;
+		}
+
+		parse_str($query_string, $params);
+		$preferred_username = $params['preferred_username'] ?? '';
+		if (!$preferred_username)
+		{
+			return null;
+		}
+
+		return ActorModel::getActiveActorByPreferredUsername($preferred_username);
+	}
+
+	/**
+	 * Authorized Fetch (Secure Mode) 검증
+	 * 설정이 활성화된 경우 GET 요청에 대해 HTTP Signature 검증을 수행
+	 *
+	 * @return bool true이면 통과, false이면 응답이 이미 전송됨
+	 */
+	protected function checkAuthorizedFetch()
+	{
+		$config = ConfigModel::getConfig();
+		if (($config->authorized_fetch ?? 'N') !== 'Y')
+		{
+			return true;
+		}
+
+		if (!$this->verifyHttpSignature())
+		{
+			$this->sendJsonResponse(['error' => 'Request not signed or signature verification failed'], 401);
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * HTTP Signature 검증
+	 * 마스토돈 스펙에 따라 Signature 헤더를 파싱하고 서명을 검증
+	 *
+	 * @return bool
+	 */
+	protected function verifyHttpSignature()
+	{
+		$signature_header = $_SERVER['HTTP_SIGNATURE'] ?? '';
+		if (!$signature_header)
+		{
+			return false;
+		}
+
+		// Signature 헤더 파싱: keyId, headers, signature
+		$parts = [];
+		if (preg_match_all('/(\w+)="([^"]*)"/', $signature_header, $matches, PREG_SET_ORDER))
+		{
+			foreach ($matches as $match)
+			{
+				$parts[$match[1]] = $match[2];
+			}
+		}
+
+		$key_id = $parts['keyId'] ?? '';
+		$headers_list = $parts['headers'] ?? 'date';
+		$signature_b64 = $parts['signature'] ?? '';
+
+		if (!$key_id || !$signature_b64)
+		{
+			return false;
+		}
+
+		// Date 헤더의 유효성 확인 (12시간 이내)
+		$date_header = $_SERVER['HTTP_DATE'] ?? '';
+		if ($date_header)
+		{
+			$request_time = strtotime($date_header);
+			if ($request_time === false || abs(time() - $request_time) > self::HTTP_SIGNATURE_MAX_AGE)
+			{
+				return false;
+			}
+		}
+
+		// 원격 Actor의 공개 키 가져오기
+		$actor_url = preg_replace('/#.*$/', '', $key_id);
+		$remote_actor = $this->fetchRemoteActor($actor_url);
+		if (!$remote_actor || empty($remote_actor['publicKey']['publicKeyPem']))
+		{
+			return false;
+		}
+
+		// keyId가 일치하는지 확인
+		$remote_key_id = $remote_actor['publicKey']['id'] ?? '';
+		if ($remote_key_id && $remote_key_id !== $key_id)
+		{
+			return false;
+		}
+
+		$public_key_pem = $remote_actor['publicKey']['publicKeyPem'];
+
+		// 서명 문자열 재구성
+		$headers = explode(' ', $headers_list);
+		$signing_parts = [];
+		foreach ($headers as $header_name)
+		{
+			$header_name = strtolower(trim($header_name));
+			if ($header_name === '(request-target)')
+			{
+				$method = strtolower($_SERVER['REQUEST_METHOD'] ?? 'get');
+				$path = $_SERVER['REQUEST_URI'] ?? '/';
+				$signing_parts[] = '(request-target): ' . $method . ' ' . $path;
+			}
+			elseif ($header_name === 'host')
+			{
+				$signing_parts[] = 'host: ' . ($_SERVER['HTTP_HOST'] ?? '');
+			}
+			elseif ($header_name === 'date')
+			{
+				$signing_parts[] = 'date: ' . ($date_header ?: '');
+			}
+			elseif ($header_name === 'digest')
+			{
+				$signing_parts[] = 'digest: ' . ($_SERVER['HTTP_DIGEST'] ?? '');
+			}
+			elseif ($header_name === 'content-type')
+			{
+				$signing_parts[] = 'content-type: ' . ($_SERVER['CONTENT_TYPE'] ?? $_SERVER['HTTP_CONTENT_TYPE'] ?? '');
+			}
+			else
+			{
+				$server_key = 'HTTP_' . strtoupper(str_replace('-', '_', $header_name));
+				$signing_parts[] = $header_name . ': ' . ($_SERVER[$server_key] ?? '');
+			}
+		}
+		$signing_string = implode("\n", $signing_parts);
+
+		// 서명 검증 (RSA-SHA256)
+		$decoded_signature = base64_decode($signature_b64);
+		if ($decoded_signature === false)
+		{
+			return false;
+		}
+
+		$public_key = openssl_pkey_get_public($public_key_pem);
+		if (!$public_key)
+		{
+			return false;
+		}
+
+		$result = openssl_verify($signing_string, $decoded_signature, $public_key, OPENSSL_ALGO_SHA256);
+		return $result === 1;
+	}
+
+	/**
+	 * Rhymix의 YmdHis 형식 날짜를 ISO 8601 형식으로 변환
+	 *
+	 * @param string $regdate
+	 * @return string
+	 */
+	protected static function formatRegdateToIso($regdate)
+	{
+		if (!$regdate)
+		{
+			return date('c');
+		}
+		$dt = \DateTime::createFromFormat('YmdHis', $regdate);
+		return $dt ? $dt->format('c') : date('c');
 	}
 
 	/**

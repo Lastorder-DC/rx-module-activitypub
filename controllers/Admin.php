@@ -104,6 +104,9 @@ class Admin extends Base
 		// 댓글 전송 여부 설정
 		$config->send_comments = ($vars->send_comments === 'Y') ? 'Y' : 'N';
 
+		// Authorized Fetch (Secure Mode) 설정
+		$config->authorized_fetch = ($vars->authorized_fetch === 'Y') ? 'Y' : 'N';
+
 		// 설정 저장
 		$output = ConfigModel::setConfig($config);
 		if (!$output->toBool())
