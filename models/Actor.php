@@ -454,6 +454,19 @@ class Actor
 	}
 
 	/**
+	 * follower_srl로 팔로워 삭제
+	 *
+	 * @param int $follower_srl
+	 * @return object
+	 */
+	public static function removeFollowerByFollowerSrl($follower_srl)
+	{
+		$args = new \stdClass;
+		$args->follower_srl = $follower_srl;
+		return executeQuery('activitypub.deleteFollowerByFollowerSrl', $args);
+	}
+
+	/**
 	 * 특정 팔로워 가져오기
 	 *
 	 * @param int $actor_srl
@@ -619,10 +632,17 @@ class Actor
 	 */
 	public static function getSiteUrl()
 	{
+		// Context::getRequestUri()는 사이트의 기본 URL을 반환 (예: https://example.com/)
+		$request_uri = \Context::getRequestUri();
+		if ($request_uri)
+		{
+			return rtrim($request_uri, '/') . '/';
+		}
+
+		// Fallback
 		$scheme = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 		$domain = self::getSiteDomain();
-		$base_url = defined('RX_BASEURL') ? \RX_BASEURL : '/';
-		return $scheme . '://' . $domain . $base_url;
+		return $scheme . '://' . $domain . '/';
 	}
 
 	/**

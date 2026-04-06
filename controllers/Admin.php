@@ -379,4 +379,60 @@ class Admin extends Base
 		$this->setMessage('success_deleted');
 		$this->setRedirectUrl(getNotEncodedUrl('', 'module', 'admin', 'act', 'dispActivitypubAdminConfig'));
 	}
+
+	/**
+	 * Actor 팔로워 목록 화면
+	 */
+	public function dispActivitypubAdminActorFollowers()
+	{
+		$actor_srl = intval(Context::get('actor_srl'));
+		if (!$actor_srl)
+		{
+			return new BaseObject(-1, 'msg_invalid_request');
+		}
+
+		$actor = ActorModel::getActor($actor_srl);
+		if (!$actor || ($actor->is_deleted ?? 'N') === 'Y')
+		{
+			return new BaseObject(-1, 'msg_not_founded');
+		}
+
+		$page = intval(Context::get('page')) ?: 1;
+		$followers_output = ActorModel::getFollowers($actor_srl, $page);
+		$followers = $followers_output->data ?: [];
+		if (!empty($followers) && !is_array($followers))
+		{
+			$followers = [$followers];
+		}
+
+		Context::set('actor', $actor);
+		Context::set('follower_list', $followers);
+		Context::set('page_navigation', $followers_output->page_navigation ?? null);
+		Context::set('site_domain', ActorModel::getSiteDomain());
+
+		$this->setTemplateFile('actor_followers');
+	}
+
+	/**
+	 * 팔로워 삭제 처리
+	 */
+	public function procActivitypubAdminDeleteFollower()
+	{
+		$vars = Context::getRequestVars();
+		$follower_srl = intval($vars->follower_srl ?? 0);
+		$actor_srl = intval($vars->actor_srl ?? 0);
+		if (!$follower_srl || !$actor_srl)
+		{
+			return new BaseObject(-1, 'msg_invalid_request');
+		}
+
+		$output = ActorModel::removeFollowerByFollowerSrl($follower_srl);
+		if (!$output->toBool())
+		{
+			return $output;
+		}
+
+		$this->setMessage('success_deleted');
+		$this->setRedirectUrl(getNotEncodedUrl('', 'module', 'admin', 'act', 'dispActivitypubAdminActorFollowers', 'actor_srl', $actor_srl));
+	}
 }
