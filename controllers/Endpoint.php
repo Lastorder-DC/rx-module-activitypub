@@ -4,6 +4,8 @@ namespace Rhymix\Modules\Activitypub\Controllers;
 
 use Rhymix\Modules\Activitypub\Models\Actor as ActorModel;
 use Rhymix\Modules\Activitypub\Models\Config as ConfigModel;
+use ActivityPhp\Type;
+use ActivityPhp\Type\TypeConfiguration;
 use Context;
 use ModuleModel;
 
@@ -25,6 +27,7 @@ class Endpoint extends Base
 	 */
 	public function init()
 	{
+		TypeConfiguration::set('undefined_properties', 'include');
 	}
 
 	/**
@@ -216,7 +219,7 @@ class Endpoint extends Base
 			$profile_url = $actor_url;
 		}
 
-		$response = [
+		$actorType = Type::create($ap_type, [
 			'@context' => [
 				'https://www.w3.org/ns/activitystreams',
 				'https://w3id.org/security/v1',
@@ -229,7 +232,6 @@ class Endpoint extends Base
 				],
 			],
 			'id' => $actor_url,
-			'type' => $ap_type,
 			'preferredUsername' => $actor->preferred_username,
 			'name' => $name,
 			'summary' => $summary,
@@ -248,23 +250,23 @@ class Endpoint extends Base
 			'endpoints' => [
 				'sharedInbox' => $shared_inbox_url,
 			],
-		];
+		]);
 
 		if (!empty($attachment))
 		{
-			$response['attachment'] = $attachment;
+			$actorType->set('attachment', $attachment);
 		}
 
 		// 프로필 이미지가 설정된 경우 icon 필드 추가
 		if (!empty($actor->icon_url))
 		{
-			$response['icon'] = [
+			$actorType->set('icon', [
 				'type' => 'Image',
 				'url' => $actor->icon_url,
-			];
+			]);
 		}
 
-		$this->sendJsonResponse($response, 200, 'application/activity+json');
+		$this->sendActivityResponse($actorType);
 	}
 
 	/**
@@ -296,15 +298,14 @@ class Endpoint extends Base
 		$outbox_url = ActorModel::getOutboxUrl($actor->preferred_username);
 
 		// 간단한 빈 Outbox 응답 (OrderedCollection)
-		$response = [
+		$outboxCollection = Type::create('OrderedCollection', [
 			'@context' => 'https://www.w3.org/ns/activitystreams',
 			'id' => $outbox_url,
-			'type' => 'OrderedCollection',
 			'totalItems' => 0,
 			'orderedItems' => [],
-		];
+		]);
 
-		$this->sendJsonResponse($response, 200, 'application/activity+json');
+		$this->sendActivityResponse($outboxCollection);
 	}
 
 	/**
@@ -341,15 +342,14 @@ class Endpoint extends Base
 
 			$inbox_url = ActorModel::getInboxUrl($actor->preferred_username);
 
-			$response = [
+			$inboxCollection = Type::create('OrderedCollection', [
 				'@context' => 'https://www.w3.org/ns/activitystreams',
 				'id' => $inbox_url,
-				'type' => 'OrderedCollection',
 				'totalItems' => 0,
 				'orderedItems' => [],
-			];
+			]);
 
-			$this->sendJsonResponse($response, 200, 'application/activity+json');
+			$this->sendActivityResponse($inboxCollection);
 			return;
 		}
 
@@ -376,14 +376,17 @@ class Endpoint extends Base
 			return;
 		}
 
-		$payload = json_decode($raw_body, true);
-		if (!$payload || !isset($payload['type']))
+		try
+		{
+			$payload = Type::fromJson($raw_body);
+		}
+		catch (\Exception $e)
 		{
 			$this->sendJsonResponse(['error' => 'Invalid JSON'], 400);
 			return;
 		}
 
-		$type = $payload['type'];
+		$type = $payload->type;
 
 		switch ($type)
 		{
@@ -405,11 +408,11 @@ class Endpoint extends Base
 	 * Follow 요청 처리
 	 *
 	 * @param object $actor
-	 * @param array $payload
+	 * @param \ActivityPhp\Type\AbstractObject $payload
 	 */
 	protected function handleFollow($actor, $payload)
 	{
-		$follower_actor_url = $payload['actor'] ?? '';
+		$follower_actor_url = $payload->actor;
 		if (!$follower_actor_url || !filter_var($follower_actor_url, FILTER_VALIDATE_URL))
 		{
 			$this->sendJsonResponse(['error' => 'Invalid actor'], 400);
@@ -443,15 +446,14 @@ class Endpoint extends Base
 
 		// Accept 응답 전송
 		$actor_url = ActorModel::getActorUrl($actor->preferred_username);
-		$accept = [
+		$accept = Type::create('Accept', [
 			'@context' => 'https://www.w3.org/ns/activitystreams',
 			'id' => $actor_url . '/accept/' . time(),
-			'type' => 'Accept',
 			'actor' => $actor_url,
-			'object' => $payload,
-		];
+			'object' => $payload->toArray(),
+		]);
 
-		$body = json_encode($accept, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+		$body = $accept->toJson(JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 		$this->sendSignedRequest($actor, $follower_inbox_url, $body);
 
 		$this->sendJsonResponse(['status' => 'accepted'], 202);
@@ -461,18 +463,18 @@ class Endpoint extends Base
 	 * Undo 요청 처리 (Unfollow)
 	 *
 	 * @param object $actor
-	 * @param array $payload
+	 * @param \ActivityPhp\Type\AbstractObject $payload
 	 */
 	protected function handleUndo($actor, $payload)
 	{
-		$object = $payload['object'] ?? null;
-		if (!$object || !is_array($object) || ($object['type'] ?? '') !== 'Follow')
+		$object = $payload->object;
+		if (!$object || !($object instanceof \ActivityPhp\Type\AbstractObject) || $object->type !== 'Follow')
 		{
 			$this->sendJsonResponse(['status' => 'accepted'], 202);
 			return;
 		}
 
-		$follower_actor_url = $payload['actor'] ?? '';
+		$follower_actor_url = $payload->actor;
 		if ($follower_actor_url)
 		{
 			ActorModel::removeFollower($actor->actor_srl, $follower_actor_url);
@@ -630,14 +632,13 @@ class Endpoint extends Base
 			$total_items = count($followers);
 		}
 
-		$response = [
+		$response = Type::create('OrderedCollection', [
 			'@context' => 'https://www.w3.org/ns/activitystreams',
 			'id' => $followers_url,
-			'type' => 'OrderedCollection',
 			'totalItems' => $total_items,
-		];
+		]);
 
-		$this->sendJsonResponse($response, 200, 'application/activity+json');
+		$this->sendActivityResponse($response);
 	}
 
 	/**
@@ -668,14 +669,13 @@ class Endpoint extends Base
 		$following_url = ActorModel::getFollowingUrl($actor->preferred_username);
 
 		// 이 서버에서는 다른 Actor를 팔로우하지 않으므로 항상 빈 컬렉션
-		$response = [
+		$response = Type::create('OrderedCollection', [
 			'@context' => 'https://www.w3.org/ns/activitystreams',
 			'id' => $following_url,
-			'type' => 'OrderedCollection',
 			'totalItems' => 0,
-		];
+		]);
 
-		$this->sendJsonResponse($response, 200, 'application/activity+json');
+		$this->sendActivityResponse($response);
 	}
 
 	/**
@@ -698,15 +698,14 @@ class Endpoint extends Base
 
 			$shared_inbox_url = ActorModel::getSharedInboxUrl();
 
-			$response = [
+			$sharedInboxCollection = Type::create('OrderedCollection', [
 				'@context' => 'https://www.w3.org/ns/activitystreams',
 				'id' => $shared_inbox_url,
-				'type' => 'OrderedCollection',
 				'totalItems' => 0,
 				'orderedItems' => [],
-			];
+			]);
 
-			$this->sendJsonResponse($response, 200, 'application/activity+json');
+			$this->sendActivityResponse($sharedInboxCollection);
 			return;
 		}
 
@@ -718,8 +717,11 @@ class Endpoint extends Base
 			return;
 		}
 
-		$payload = json_decode($raw_body, true);
-		if (!$payload || !isset($payload['type']))
+		try
+		{
+			$payload = Type::fromJson($raw_body);
+		}
+		catch (\Exception $e)
 		{
 			$this->sendJsonResponse(['error' => 'Invalid JSON'], 400);
 			return;
@@ -733,7 +735,7 @@ class Endpoint extends Base
 			return;
 		}
 
-		$type = $payload['type'];
+		$type = $payload->type;
 
 		switch ($type)
 		{
@@ -754,26 +756,28 @@ class Endpoint extends Base
 	/**
 	 * Activity payload에서 대상 Actor를 결정
 	 *
-	 * @param array $payload
+	 * @param \ActivityPhp\Type\AbstractObject $payload
 	 * @return object|null
 	 */
 	protected function resolveTargetActorFromPayload($payload)
 	{
-		$type = $payload['type'] ?? '';
+		$type = $payload->type ?? '';
 		$target_url = '';
 
 		// Follow: object가 대상 Actor URL
 		if ($type === 'Follow')
 		{
-			$target_url = is_string($payload['object'] ?? null) ? $payload['object'] : '';
+			$object = $payload->object;
+			$target_url = is_string($object) ? $object : '';
 		}
 		// Undo: 내부 object에서 대상 찾기
-		elseif ($type === 'Undo' && is_array($payload['object'] ?? null))
+		elseif ($type === 'Undo' && $payload->object instanceof \ActivityPhp\Type\AbstractObject)
 		{
-			$inner = $payload['object'];
-			if (($inner['type'] ?? '') === 'Follow')
+			$inner = $payload->object;
+			if ($inner->type === 'Follow')
 			{
-				$target_url = is_string($inner['object'] ?? null) ? $inner['object'] : '';
+				$inner_object = $inner->object;
+				$target_url = is_string($inner_object) ? $inner_object : '';
 			}
 		}
 
@@ -950,6 +954,20 @@ class Endpoint extends Base
 		}
 		$dt = \DateTime::createFromFormat('YmdHis', $regdate);
 		return $dt ? $dt->format('c') : date('c');
+	}
+
+	/**
+	 * ActivityPub Type 객체를 JSON 응답으로 전송
+	 *
+	 * @param \ActivityPhp\Type\AbstractObject $type
+	 * @param int $status_code
+	 */
+	protected function sendActivityResponse($type, $status_code = 200)
+	{
+		http_response_code($status_code);
+		header('Content-Type: application/activity+json; charset=utf-8');
+		echo $type->toJson(JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+		exit;
 	}
 
 	/**
