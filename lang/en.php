@@ -91,6 +91,7 @@ $lang->cmd_activitypub_sensitive_category_srls = 'Sensitive Category SRL List';
 $lang->cmd_activitypub_sensitive_category_srls_desc = 'Enter category_srl values for sensitive categories, separated by commas.';
 $lang->cmd_activitypub_actor_settings = 'Actor Settings';
 $lang->cmd_activitypub_ap_settings = 'ActivityPub Settings';
+$lang->cmd_activitypub_author_prefix = 'Author';
 $lang->cmd_activitypub_content_max_length = 'Content Max Length';
 $lang->cmd_activitypub_content_max_length_desc = 'Maximum character length for post/comment content published via ActivityPub. (Default: 500, Range: 100~5000)';
 $lang->cmd_activitypub_outbox_page_size = 'Outbox Page Size';

@@ -752,11 +752,17 @@ class EventHandlers extends Base
 			return $result;
 		}
 
+		// MIME 타입 검증
+		$mediaType = $coverFile->mime_type ?: 'image/jpeg';
+		if (!self::isAllowedImageMimeType($mediaType))
+		{
+			return $result;
+		}
+
 		// 원본 이미지 URL 생성
 		$relativePath = ltrim($coverFile->uploaded_filename, './');
 		$site_url = ActorModel::getSiteUrl();
 		$imageUrl = rtrim($site_url, '/') . '/' . $relativePath;
-		$mediaType = $coverFile->mime_type ?: 'image/jpeg';
 
 		$result['attachment'] = [[
 			'type' => 'Image',
@@ -894,7 +900,7 @@ class EventHandlers extends Base
 		$html_content = '<p><strong>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</strong>';
 		if ($nick_name && ($actor->actor_type ?? 'board') === 'board')
 		{
-			$html_content .= '<br /><strong>작성자: ' . htmlspecialchars($nick_name, ENT_QUOTES, 'UTF-8') . '</strong>';
+			$html_content .= '<br /><strong>' . self::getAuthorLabel() . ': ' . htmlspecialchars($nick_name, ENT_QUOTES, 'UTF-8') . '</strong>';
 		}
 		$html_content .= '</p>';
 		$html_content .= '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
@@ -1031,7 +1037,7 @@ class EventHandlers extends Base
 		$html_content = '<p><strong>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</strong>';
 		if ($nick_name && ($actor->actor_type ?? 'board') === 'board')
 		{
-			$html_content .= '<br /><strong>작성자: ' . htmlspecialchars($nick_name, ENT_QUOTES, 'UTF-8') . '</strong>';
+			$html_content .= '<br /><strong>' . self::getAuthorLabel() . ': ' . htmlspecialchars($nick_name, ENT_QUOTES, 'UTF-8') . '</strong>';
 		}
 		$html_content .= '</p>';
 		$html_content .= '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';

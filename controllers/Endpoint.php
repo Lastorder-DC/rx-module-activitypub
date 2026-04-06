@@ -405,7 +405,7 @@ class Endpoint extends Base
 			$html_content = '<p><strong>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</strong>';
 			if ($nick_name && ($actor->actor_type ?? 'board') === 'board')
 			{
-				$html_content .= '<br /><strong>작성자: ' . htmlspecialchars($nick_name, ENT_QUOTES, 'UTF-8') . '</strong>';
+				$html_content .= '<br /><strong>' . self::getAuthorLabel() . ': ' . htmlspecialchars($nick_name, ENT_QUOTES, 'UTF-8') . '</strong>';
 			}
 			$html_content .= '</p>';
 			$html_content .= '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
@@ -590,7 +590,7 @@ class Endpoint extends Base
 		$html_content = '<p><strong>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</strong>';
 		if ($nick_name && ($actor->actor_type ?? 'board') === 'board')
 		{
-			$html_content .= '<br /><strong>작성자: ' . htmlspecialchars($nick_name, ENT_QUOTES, 'UTF-8') . '</strong>';
+			$html_content .= '<br /><strong>' . self::getAuthorLabel() . ': ' . htmlspecialchars($nick_name, ENT_QUOTES, 'UTF-8') . '</strong>';
 		}
 		$html_content .= '</p>';
 		$html_content .= '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
