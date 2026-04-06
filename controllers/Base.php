@@ -22,6 +22,13 @@ class Base extends \ModuleObject
 	 */
 	public static function debugLog($message)
 	{
+		// 디버그 모드가 비활성화된 경우 즉시 반환
+		$config = \Rhymix\Modules\Activitypub\Models\Config::getConfig();
+		if (($config->debug_enabled ?? 'N') !== 'Y')
+		{
+			return;
+		}
+
 		$dir = \RX_BASEDIR . 'files/debug';
 		if (!is_dir($dir))
 		{

@@ -170,7 +170,7 @@ class Actor
 	 * @param string $icon_url
 	 * @return object
 	 */
-	public static function createBoardActor($module_srl, $preferred_username, $display_name = '', $summary = '', $icon_url = '', $hide_followers = 'N')
+	public static function createBoardActor($module_srl, $preferred_username, $display_name = '', $summary = '', $icon_url = '', $hide_followers = 'N', $extra = [])
 	{
 		// 이미 존재하는지 확인
 		$existing = self::getBoardActorByModuleSrl($module_srl);
@@ -202,6 +202,15 @@ class Actor
 		$args->summary = $summary;
 		$args->icon_url = $icon_url;
 		$args->hide_followers = $hide_followers;
+		$args->discoverable = $extra['discoverable'] ?? 'Y';
+		$args->indexable = $extra['indexable'] ?? 'N';
+		$args->visibility = $extra['visibility'] ?? 'unlisted';
+		$args->quote_policy = $extra['quote_policy'] ?? 'nobody';
+		$args->category_filter_mode = $extra['category_filter_mode'] ?? 'off';
+		$args->category_filter_srls = $extra['category_filter_srls'] ?? '';
+		$args->attach_thumbnail = $extra['attach_thumbnail'] ?? 'N';
+		$args->sensitive_mode = $extra['sensitive_mode'] ?? 'off';
+		$args->sensitive_category_srls = $extra['sensitive_category_srls'] ?? '';
 		$args->public_key = $keyPair['public'];
 		$args->private_key = $keyPair['private'];
 		$args->regdate = date('YmdHis');
@@ -224,9 +233,11 @@ class Actor
 	 * @param string $display_name
 	 * @param string $summary
 	 * @param string $icon_url
+	 * @param string $hide_followers
+	 * @param array $extra
 	 * @return object
 	 */
-	public static function createUserActor($member_srl, $preferred_username, $display_name = '', $summary = '', $icon_url = '', $hide_followers = 'N')
+	public static function createUserActor($member_srl, $preferred_username, $display_name = '', $summary = '', $icon_url = '', $hide_followers = 'N', $extra = [])
 	{
 		// 이미 이 유저에 대한 Actor가 존재하는지 확인
 		$existing = self::getUserActorByMemberSrl($member_srl);
@@ -258,6 +269,15 @@ class Actor
 		$args->summary = $summary;
 		$args->icon_url = $icon_url;
 		$args->hide_followers = $hide_followers;
+		$args->discoverable = $extra['discoverable'] ?? 'Y';
+		$args->indexable = $extra['indexable'] ?? 'N';
+		$args->visibility = $extra['visibility'] ?? 'unlisted';
+		$args->quote_policy = $extra['quote_policy'] ?? 'nobody';
+		$args->category_filter_mode = $extra['category_filter_mode'] ?? 'off';
+		$args->category_filter_srls = $extra['category_filter_srls'] ?? '';
+		$args->attach_thumbnail = $extra['attach_thumbnail'] ?? 'N';
+		$args->sensitive_mode = $extra['sensitive_mode'] ?? 'off';
+		$args->sensitive_category_srls = $extra['sensitive_category_srls'] ?? '';
 		$args->public_key = $keyPair['public'];
 		$args->private_key = $keyPair['private'];
 		$args->regdate = date('YmdHis');
@@ -293,7 +313,7 @@ class Actor
 	 * @param string $icon_url
 	 * @return object
 	 */
-	public static function updateActorProfile($actor_srl, $display_name, $summary, $icon_url, $hide_followers = 'N')
+	public static function updateActorProfile($actor_srl, $display_name, $summary, $icon_url, $hide_followers = 'N', $extra = [])
 	{
 		$args = new \stdClass;
 		$args->actor_srl = $actor_srl;
@@ -301,6 +321,15 @@ class Actor
 		$args->summary = $summary;
 		$args->icon_url = $icon_url;
 		$args->hide_followers = $hide_followers;
+		$args->discoverable = $extra['discoverable'] ?? 'Y';
+		$args->indexable = $extra['indexable'] ?? 'N';
+		$args->visibility = $extra['visibility'] ?? 'unlisted';
+		$args->quote_policy = $extra['quote_policy'] ?? 'nobody';
+		$args->category_filter_mode = $extra['category_filter_mode'] ?? 'off';
+		$args->category_filter_srls = $extra['category_filter_srls'] ?? '';
+		$args->attach_thumbnail = $extra['attach_thumbnail'] ?? 'N';
+		$args->sensitive_mode = $extra['sensitive_mode'] ?? 'off';
+		$args->sensitive_category_srls = $extra['sensitive_category_srls'] ?? '';
 		return executeQuery('activitypub.updateActorProfile', $args);
 	}
 
@@ -333,6 +362,15 @@ class Actor
 		$args->public_key = '';
 		$args->private_key = '';
 		$args->hide_followers = 'N';
+		$args->discoverable = 'Y';
+		$args->indexable = 'N';
+		$args->visibility = 'unlisted';
+		$args->quote_policy = 'nobody';
+		$args->category_filter_mode = 'off';
+		$args->category_filter_srls = '';
+		$args->attach_thumbnail = 'N';
+		$args->sensitive_mode = 'off';
+		$args->sensitive_category_srls = '';
 		$args->is_deleted = 'Y';
 		return executeQuery('activitypub.softDeleteActor', $args);
 	}

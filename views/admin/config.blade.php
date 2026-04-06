@@ -24,6 +24,32 @@
 		<h2>{{ $lang->cmd_activitypub_general_config }}</h2>
 
 		<div class="x_control-group">
+			<label class="x_control-label">{{ $lang->cmd_activitypub_module_enabled }}</label>
+			<div class="x_controls">
+				<label class="x_inline">
+					<input type="radio" name="module_enabled" value="Y" @checked(($config->module_enabled ?? 'Y') === 'Y') /> {{ $lang->cmd_yes }}
+				</label>
+				<label class="x_inline">
+					<input type="radio" name="module_enabled" value="N" @checked(($config->module_enabled ?? 'Y') === 'N') /> {{ $lang->cmd_no }}
+				</label>
+				<p class="x_help-block">{{ $lang->cmd_activitypub_module_enabled_desc }}</p>
+			</div>
+		</div>
+
+		<div class="x_control-group">
+			<label class="x_control-label">{{ $lang->cmd_activitypub_debug_enabled }}</label>
+			<div class="x_controls">
+				<label class="x_inline">
+					<input type="radio" name="debug_enabled" value="Y" @checked(($config->debug_enabled ?? 'N') === 'Y') /> {{ $lang->cmd_yes }}
+				</label>
+				<label class="x_inline">
+					<input type="radio" name="debug_enabled" value="N" @checked(($config->debug_enabled ?? 'N') === 'N') /> {{ $lang->cmd_no }}
+				</label>
+				<p class="x_help-block">{{ $lang->cmd_activitypub_debug_enabled_desc }}</p>
+			</div>
+		</div>
+
+		<div class="x_control-group">
 			<label class="x_control-label">{{ $lang->cmd_activitypub_send_comments }}</label>
 			<div class="x_controls">
 				<label class="x_inline">

@@ -15,6 +15,15 @@
 		<column name="public_key" var="public_key" notnull="notnull" />
 		<column name="private_key" var="private_key" notnull="notnull" />
 		<column name="hide_followers" var="hide_followers" />
+		<column name="discoverable" var="discoverable" />
+		<column name="indexable" var="indexable" />
+		<column name="visibility" var="visibility" />
+		<column name="quote_policy" var="quote_policy" />
+		<column name="category_filter_mode" var="category_filter_mode" />
+		<column name="category_filter_srls" var="category_filter_srls" />
+		<column name="attach_thumbnail" var="attach_thumbnail" />
+		<column name="sensitive_mode" var="sensitive_mode" />
+		<column name="sensitive_category_srls" var="sensitive_category_srls" />
 		<column name="regdate" var="regdate" />
 	</columns>
 </query>
