@@ -760,6 +760,14 @@ class Endpoint extends Base
 				$this->handleUndo($actor, $payload);
 				break;
 
+			case 'Delete':
+				$this->handleDelete($actor, $payload);
+				break;
+
+			case 'Update':
+				$this->handleUpdate($actor, $payload);
+				break;
+
 			default:
 				self::debugLog('procActivitypubInbox POST: Unhandled activity type: ' . $type);
 				$this->sendJsonResponse(['status' => 'accepted'], 202);
@@ -864,6 +872,87 @@ class Endpoint extends Base
 		}
 
 		self::debugLog('--- handleUndo END ---');
+		$this->sendJsonResponse(['status' => 'accepted'], 202);
+	}
+
+	/**
+	 * Delete 요청 처리
+	 * 원격 서버에서 노트 또는 Actor 삭제 알림을 받았을 때 처리
+	 *
+	 * @param object $actor 로컬 Actor (수신자)
+	 * @param \ActivityPhp\Type\AbstractObject $payload
+	 */
+	protected function handleDelete($actor, $payload)
+	{
+		self::debugLog('--- handleDelete START ---');
+
+		$remote_actor_url = $payload->actor;
+		self::debugLog('handleDelete: Remote actor URL: ' . ($remote_actor_url ?: '(empty)'));
+
+		$object = $payload->object;
+		$object_id = '';
+
+		// object가 문자열(URL)인 경우
+		if (is_string($object))
+		{
+			$object_id = $object;
+		}
+		// object가 객체인 경우 (Tombstone 등)
+		elseif ($object instanceof \ActivityPhp\Type\AbstractObject)
+		{
+			$object_id = $object->id ?? '';
+		}
+
+		self::debugLog('handleDelete: Object ID: ' . ($object_id ?: '(empty)'));
+
+		if (!$object_id)
+		{
+			self::debugLog('handleDelete: No object ID found');
+			$this->sendJsonResponse(['status' => 'accepted'], 202);
+			return;
+		}
+
+		// Actor 삭제 (object가 actor 자체인 경우)
+		if ($object_id === $remote_actor_url)
+		{
+			self::debugLog('handleDelete: Actor self-delete detected, removing follower');
+			ActorModel::removeFollower($actor->actor_srl, $remote_actor_url);
+		}
+		else
+		{
+			self::debugLog('handleDelete: Note deletion acknowledged for object: ' . $object_id);
+		}
+
+		self::debugLog('--- handleDelete END ---');
+		$this->sendJsonResponse(['status' => 'accepted'], 202);
+	}
+
+	/**
+	 * Update 요청 처리
+	 * 원격 서버에서 노트 또는 프로필 업데이트 알림을 받았을 때 처리
+	 *
+	 * @param object $actor 로컬 Actor (수신자)
+	 * @param \ActivityPhp\Type\AbstractObject $payload
+	 */
+	protected function handleUpdate($actor, $payload)
+	{
+		self::debugLog('--- handleUpdate START ---');
+
+		$remote_actor_url = $payload->actor;
+		self::debugLog('handleUpdate: Remote actor URL: ' . ($remote_actor_url ?: '(empty)'));
+
+		$object = $payload->object;
+		$object_type = '';
+
+		if ($object instanceof \ActivityPhp\Type\AbstractObject)
+		{
+			$object_type = $object->type ?? '';
+		}
+
+		self::debugLog('handleUpdate: Object type: ' . ($object_type ?: '(unknown)'));
+		self::debugLog('handleUpdate: Update acknowledged');
+
+		self::debugLog('--- handleUpdate END ---');
 		$this->sendJsonResponse(['status' => 'accepted'], 202);
 	}
 
@@ -1288,6 +1377,14 @@ class Endpoint extends Base
 				$this->handleUndo($actor, $payload);
 				break;
 
+			case 'Delete':
+				$this->handleDelete($actor, $payload);
+				break;
+
+			case 'Update':
+				$this->handleUpdate($actor, $payload);
+				break;
+
 			default:
 				self::debugLog('procActivitypubSharedInbox POST: Unhandled activity type: ' . $type);
 				$this->sendJsonResponse(['status' => 'accepted'], 202);
@@ -1329,6 +1426,26 @@ class Endpoint extends Base
 				self::debugLog('resolveTargetActorFromPayload: Undo inner type is not Follow: ' . $inner->type);
 			}
 		}
+		// Delete/Update: to/cc에서 대상 Actor 찾기
+		elseif ($type === 'Delete' || $type === 'Update')
+		{
+			// to와 cc에서 로컬 Actor URL 찾기
+			$recipients = array_merge(
+				$this->extractRecipients($payload->to ?? null),
+				$this->extractRecipients($payload->cc ?? null)
+			);
+			foreach ($recipients as $recipient_url)
+			{
+				$actor = $this->resolveLocalActorFromUrl($recipient_url);
+				if ($actor)
+				{
+					self::debugLog('resolveTargetActorFromPayload: ' . $type . ' resolved actor from to/cc: ' . $actor->preferred_username);
+					return $actor;
+				}
+			}
+			self::debugLog('resolveTargetActorFromPayload: ' . $type . ' - no local actor found in to/cc, accepting anyway');
+			// Delete/Update 는 to/cc가 없어도 수락 (202 반환은 호출측에서)
+		}
 		else
 		{
 			self::debugLog('resolveTargetActorFromPayload: Unhandled type: ' . $type);
@@ -1340,11 +1457,26 @@ class Endpoint extends Base
 			return null;
 		}
 
+		return $this->resolveLocalActorFromUrl($target_url);
+	}
+
+	/**
+	 * URL에서 로컬 Actor 확인
+	 *
+	 * @param string $url
+	 * @return object|null
+	 */
+	protected function resolveLocalActorFromUrl($url)
+	{
+		if (!$url || !is_string($url))
+		{
+			return null;
+		}
+
 		// URL에서 preferred_username 추출
-		$query_string = parse_url($target_url, PHP_URL_QUERY);
+		$query_string = parse_url($url, PHP_URL_QUERY);
 		if (!$query_string)
 		{
-			self::debugLog('resolveTargetActorFromPayload: No query string in target URL');
 			return null;
 		}
 
@@ -1352,14 +1484,36 @@ class Endpoint extends Base
 		$preferred_username = $params['preferred_username'] ?? '';
 		if (!$preferred_username)
 		{
-			self::debugLog('resolveTargetActorFromPayload: No preferred_username in query string');
 			return null;
 		}
 
-		self::debugLog('resolveTargetActorFromPayload: Resolved preferred_username: ' . $preferred_username);
+		self::debugLog('resolveLocalActorFromUrl: Resolved preferred_username: ' . $preferred_username);
 		$actor = ActorModel::getActiveActorByPreferredUsername($preferred_username);
-		self::debugLog('resolveTargetActorFromPayload: Actor found: ' . ($actor ? 'YES' : 'NO'));
+		self::debugLog('resolveLocalActorFromUrl: Actor found: ' . ($actor ? 'YES' : 'NO'));
 		return $actor;
+	}
+
+	/**
+	 * to/cc 필드에서 수신자 URL 목록 추출
+	 *
+	 * @param mixed $field
+	 * @return array
+	 */
+	protected function extractRecipients($field)
+	{
+		if (!$field)
+		{
+			return [];
+		}
+		if (is_string($field))
+		{
+			return [$field];
+		}
+		if (is_array($field))
+		{
+			return $field;
+		}
+		return [];
 	}
 
 	/**
