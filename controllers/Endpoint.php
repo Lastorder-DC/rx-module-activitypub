@@ -16,6 +16,11 @@ use ModuleModel;
 class Endpoint extends Base
 {
 	/**
+	 * HTTP Signature의 최대 유효 시간 (초 단위, 12시간)
+	 */
+	const HTTP_SIGNATURE_MAX_AGE = 43200;
+
+	/**
 	 * 초기화
 	 */
 	public function init()
@@ -855,7 +860,7 @@ class Endpoint extends Base
 		if ($date_header)
 		{
 			$request_time = strtotime($date_header);
-			if ($request_time === false || abs(time() - $request_time) > 43200)
+			if ($request_time === false || abs(time() - $request_time) > self::HTTP_SIGNATURE_MAX_AGE)
 			{
 				return false;
 			}
