@@ -138,6 +138,7 @@ class Admin extends Base
 		$display_name = trim($vars->display_name ?? '');
 		$summary = trim($vars->summary ?? '');
 		$icon_url = trim($vars->icon_url ?? '');
+		$hide_followers = ($vars->hide_followers ?? 'N') === 'Y' ? 'Y' : 'N';
 
 		if (!$preferred_username)
 		{
@@ -171,7 +172,7 @@ class Admin extends Base
 			}
 			$module_srl = intval($srl_list[0]);
 
-			$output = ActorModel::createBoardActor($module_srl, $preferred_username, $display_name, $summary, $icon_url);
+			$output = ActorModel::createBoardActor($module_srl, $preferred_username, $display_name, $summary, $icon_url, $hide_followers);
 			if (!$output->toBool())
 			{
 				return $output;
@@ -191,7 +192,7 @@ class Admin extends Base
 				return new BaseObject(-1, 'msg_activitypub_member_not_found');
 			}
 
-			$output = ActorModel::createUserActor($member_srl, $preferred_username, $display_name, $summary, $icon_url);
+			$output = ActorModel::createUserActor($member_srl, $preferred_username, $display_name, $summary, $icon_url, $hide_followers);
 			if (!$output->toBool())
 			{
 				return $output;
@@ -298,6 +299,7 @@ class Admin extends Base
 		$display_name = trim($vars->display_name ?? '');
 		$summary = trim($vars->summary ?? '');
 		$icon_url = trim($vars->icon_url ?? '');
+		$hide_followers = ($vars->hide_followers ?? 'N') === 'Y' ? 'Y' : 'N';
 
 		// icon_url이 입력된 경우 유효한 URL인지 확인
 		if ($icon_url !== '' && !filter_var($icon_url, FILTER_VALIDATE_URL))
@@ -305,7 +307,7 @@ class Admin extends Base
 			return new BaseObject(-1, 'msg_activitypub_invalid_icon_url');
 		}
 
-		$output = ActorModel::updateActorProfile($actor_srl, $display_name, $summary, $icon_url);
+		$output = ActorModel::updateActorProfile($actor_srl, $display_name, $summary, $icon_url, $hide_followers);
 		if (!$output->toBool())
 		{
 			return $output;

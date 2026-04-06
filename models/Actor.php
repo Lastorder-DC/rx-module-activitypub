@@ -170,7 +170,7 @@ class Actor
 	 * @param string $icon_url
 	 * @return object
 	 */
-	public static function createBoardActor($module_srl, $preferred_username, $display_name = '', $summary = '', $icon_url = '')
+	public static function createBoardActor($module_srl, $preferred_username, $display_name = '', $summary = '', $icon_url = '', $hide_followers = 'N')
 	{
 		// 이미 존재하는지 확인
 		$existing = self::getBoardActorByModuleSrl($module_srl);
@@ -201,6 +201,7 @@ class Actor
 		$args->display_name = $display_name;
 		$args->summary = $summary;
 		$args->icon_url = $icon_url;
+		$args->hide_followers = $hide_followers;
 		$args->public_key = $keyPair['public'];
 		$args->private_key = $keyPair['private'];
 		$args->regdate = date('YmdHis');
@@ -225,7 +226,7 @@ class Actor
 	 * @param string $icon_url
 	 * @return object
 	 */
-	public static function createUserActor($member_srl, $preferred_username, $display_name = '', $summary = '', $icon_url = '')
+	public static function createUserActor($member_srl, $preferred_username, $display_name = '', $summary = '', $icon_url = '', $hide_followers = 'N')
 	{
 		// 이미 이 유저에 대한 Actor가 존재하는지 확인
 		$existing = self::getUserActorByMemberSrl($member_srl);
@@ -256,6 +257,7 @@ class Actor
 		$args->display_name = $display_name;
 		$args->summary = $summary;
 		$args->icon_url = $icon_url;
+		$args->hide_followers = $hide_followers;
 		$args->public_key = $keyPair['public'];
 		$args->private_key = $keyPair['private'];
 		$args->regdate = date('YmdHis');
@@ -291,13 +293,14 @@ class Actor
 	 * @param string $icon_url
 	 * @return object
 	 */
-	public static function updateActorProfile($actor_srl, $display_name, $summary, $icon_url)
+	public static function updateActorProfile($actor_srl, $display_name, $summary, $icon_url, $hide_followers = 'N')
 	{
 		$args = new \stdClass;
 		$args->actor_srl = $actor_srl;
 		$args->display_name = $display_name;
 		$args->summary = $summary;
 		$args->icon_url = $icon_url;
+		$args->hide_followers = $hide_followers;
 		return executeQuery('activitypub.updateActorProfile', $args);
 	}
 
@@ -329,6 +332,7 @@ class Actor
 		$args->icon_url = '';
 		$args->public_key = '';
 		$args->private_key = '';
+		$args->hide_followers = 'N';
 		$args->is_deleted = 'Y';
 		return executeQuery('activitypub.softDeleteActor', $args);
 	}
@@ -485,6 +489,78 @@ class Actor
 		$args->page_count = 10;
 		$args->sort_index = 'follower_srl';
 		return executeQuery('activitypub.getFollowersByActorSrl', $args);
+	}
+
+	/**
+	 * Actor에 해당하는 공개 게시물 목록 가져오기
+	 * 게시판 Actor: module_srl에 해당하는 게시물
+	 * 유저 Actor: member_srl에 해당하는 게시물 (모듈 필터 적용)
+	 *
+	 * @param object $actor
+	 * @param int $page
+	 * @param int $list_count
+	 * @return object
+	 */
+	public static function getDocumentsForActor($actor, $page = 1, $list_count = 20)
+	{
+		$args = new \stdClass;
+		$args->statusList = ['PUBLIC'];
+		$args->page = $page;
+		$args->list_count = $list_count;
+		$args->page_count = 10;
+		$args->sort_index = 'regdate';
+		$args->order_type = 'desc';
+
+		$actor_type = $actor->actor_type ?? 'board';
+
+		if ($actor_type === 'board' && $actor->module_srl)
+		{
+			// 게시판이 공개 접근 가능한지 확인
+			if (!self::isModulePubliclyAccessible($actor->module_srl))
+			{
+				$result = new \BaseObject();
+				$result->data = [];
+				$result->total_count = 0;
+				return $result;
+			}
+			$args->module_srl = $actor->module_srl;
+		}
+		elseif ($actor_type === 'user' && $actor->member_srl)
+		{
+			$args->member_srl = $actor->member_srl;
+
+			// 모듈 필터가 설정된 경우 해당 모듈만
+			$filter_modules = self::getActorModules($actor->actor_srl);
+			if (!empty($filter_modules))
+			{
+				$module_srls = [];
+				foreach ($filter_modules as $fm)
+				{
+					$module_srl = intval($fm->module_srl ?? $fm['module_srl'] ?? 0);
+					if ($module_srl > 0 && self::isModulePubliclyAccessible($module_srl))
+					{
+						$module_srls[] = $module_srl;
+					}
+				}
+				if (empty($module_srls))
+				{
+					$result = new \BaseObject();
+					$result->data = [];
+					$result->total_count = 0;
+					return $result;
+				}
+				$args->module_srl = $module_srls;
+			}
+		}
+		else
+		{
+			$result = new \BaseObject();
+			$result->data = [];
+			$result->total_count = 0;
+			return $result;
+		}
+
+		return \DocumentModel::getDocumentList($args);
 	}
 
 	/**

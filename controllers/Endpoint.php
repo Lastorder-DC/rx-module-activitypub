@@ -4,6 +4,8 @@ namespace Rhymix\Modules\Activitypub\Controllers;
 
 use Rhymix\Modules\Activitypub\Models\Actor as ActorModel;
 use Rhymix\Modules\Activitypub\Models\Config as ConfigModel;
+use ActivityPhp\Type;
+use ActivityPhp\Type\TypeConfiguration;
 use Context;
 use ModuleModel;
 
@@ -25,6 +27,7 @@ class Endpoint extends Base
 	 */
 	public function init()
 	{
+		TypeConfiguration::set('undefined_properties', 'include');
 	}
 
 	/**
@@ -216,7 +219,7 @@ class Endpoint extends Base
 			$profile_url = $actor_url;
 		}
 
-		$response = [
+		$actorType = Type::create($ap_type, [
 			'@context' => [
 				'https://www.w3.org/ns/activitystreams',
 				'https://w3id.org/security/v1',
@@ -229,7 +232,6 @@ class Endpoint extends Base
 				],
 			],
 			'id' => $actor_url,
-			'type' => $ap_type,
 			'preferredUsername' => $actor->preferred_username,
 			'name' => $name,
 			'summary' => $summary,
@@ -248,27 +250,28 @@ class Endpoint extends Base
 			'endpoints' => [
 				'sharedInbox' => $shared_inbox_url,
 			],
-		];
+		]);
 
 		if (!empty($attachment))
 		{
-			$response['attachment'] = $attachment;
+			$actorType->set('attachment', $attachment);
 		}
 
 		// 프로필 이미지가 설정된 경우 icon 필드 추가
 		if (!empty($actor->icon_url))
 		{
-			$response['icon'] = [
+			$actorType->set('icon', [
 				'type' => 'Image',
 				'url' => $actor->icon_url,
-			];
+			]);
 		}
 
-		$this->sendJsonResponse($response, 200, 'application/activity+json');
+		$this->sendActivityResponse($actorType);
 	}
 
 	/**
 	 * Outbox 엔드포인트
+	 * page 파라미터가 없으면 OrderedCollection (요약), 있으면 OrderedCollectionPage (실제 콘텐츠)
 	 */
 	public function dispActivitypubOutbox()
 	{
@@ -294,17 +297,117 @@ class Endpoint extends Base
 
 		$actor_url = ActorModel::getActorUrl($actor->preferred_username);
 		$outbox_url = ActorModel::getOutboxUrl($actor->preferred_username);
+		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
+		$site_url = ActorModel::getSiteUrl();
+		$page = intval(Context::get('page'));
 
-		// 간단한 빈 Outbox 응답 (OrderedCollection)
-		$response = [
+		// 페이지 파라미터가 없으면 OrderedCollection 요약 반환
+		if ($page < 1)
+		{
+			$documents_output = ActorModel::getDocumentsForActor($actor, 1, 1);
+			$total_items = intval($documents_output->total_count ?? 0);
+
+			$collection_data = [
+				'@context' => 'https://www.w3.org/ns/activitystreams',
+				'id' => $outbox_url,
+				'totalItems' => $total_items,
+			];
+
+			if ($total_items > 0)
+			{
+				$collection_data['first'] = $outbox_url . '&page=1';
+			}
+
+			$outboxCollection = Type::create('OrderedCollection', $collection_data);
+			$this->sendActivityResponse($outboxCollection);
+			return;
+		}
+
+		// 페이지별 게시물 가져오기
+		$list_count = 20;
+		$documents_output = ActorModel::getDocumentsForActor($actor, $page, $list_count);
+		$total_items = intval($documents_output->total_count ?? 0);
+		$documents = $documents_output->data ?? [];
+		if (!is_array($documents))
+		{
+			$documents = $documents ? [$documents] : [];
+		}
+
+		// 각 게시물을 Create(Note) Activity로 변환
+		$ordered_items = [];
+		foreach ($documents as $doc)
+		{
+			$document_srl = $doc->document_srl;
+			$module_srl = $doc->module_srl;
+			$mid = ModuleModel::getMidByModuleSrl($module_srl);
+			$document_url = $site_url . '?mid=' . urlencode($mid) . '&document_srl=' . $document_srl;
+
+			$title = $doc->title ?? '';
+			$content = $doc->content ?? '';
+
+			// HTML을 평문으로 변환
+			$content_text = strip_tags($content);
+			if (mb_strlen($content_text) > 500)
+			{
+				$content_text = mb_substr($content_text, 0, 497) . '...';
+			}
+
+			$html_content = '<p><strong>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</strong></p>';
+			$html_content .= '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
+			$html_content .= '<p><a href="' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($document_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
+
+			$published = self::formatRegdateToIso($doc->regdate ?? '');
+			$note_id = $actor_url . '/note/' . $document_srl;
+
+			$note = Type::create('Note', [
+				'id' => $note_id,
+				'published' => $published,
+				'attributedTo' => $actor_url,
+				'content' => $html_content,
+				'url' => $document_url,
+				'to' => ['https://www.w3.org/ns/activitystreams#Public'],
+				'cc' => [$followers_url],
+			]);
+
+			// 수정일이 있고 등록일과 다르면 updated 필드 추가
+			if (!empty($doc->last_update) && ($doc->last_update ?? '') !== ($doc->regdate ?? ''))
+			{
+				$note->set('updated', self::formatRegdateToIso($doc->last_update));
+			}
+
+			$activity = Type::create('Create', [
+				'id' => $note_id . '/activity',
+				'actor' => $actor_url,
+				'published' => $published,
+				'to' => ['https://www.w3.org/ns/activitystreams#Public'],
+				'cc' => [$followers_url],
+				'object' => $note->toArray(),
+			]);
+
+			$ordered_items[] = $activity->toArray();
+		}
+
+		// OrderedCollectionPage 생성
+		$page_data = [
 			'@context' => 'https://www.w3.org/ns/activitystreams',
-			'id' => $outbox_url,
-			'type' => 'OrderedCollection',
-			'totalItems' => 0,
-			'orderedItems' => [],
+			'id' => $outbox_url . '&page=' . $page,
+			'partOf' => $outbox_url,
+			'orderedItems' => $ordered_items,
 		];
 
-		$this->sendJsonResponse($response, 200, 'application/activity+json');
+		// 다음 페이지 링크
+		$total_pages = $total_items > 0 ? ceil($total_items / $list_count) : 1;
+		if ($page < $total_pages)
+		{
+			$page_data['next'] = $outbox_url . '&page=' . ($page + 1);
+		}
+		if ($page > 1)
+		{
+			$page_data['prev'] = $outbox_url . '&page=' . ($page - 1);
+		}
+
+		$outboxPage = Type::create('OrderedCollectionPage', $page_data);
+		$this->sendActivityResponse($outboxPage);
 	}
 
 	/**
@@ -341,15 +444,14 @@ class Endpoint extends Base
 
 			$inbox_url = ActorModel::getInboxUrl($actor->preferred_username);
 
-			$response = [
+			$inboxCollection = Type::create('OrderedCollection', [
 				'@context' => 'https://www.w3.org/ns/activitystreams',
 				'id' => $inbox_url,
-				'type' => 'OrderedCollection',
 				'totalItems' => 0,
 				'orderedItems' => [],
-			];
+			]);
 
-			$this->sendJsonResponse($response, 200, 'application/activity+json');
+			$this->sendActivityResponse($inboxCollection);
 			return;
 		}
 
@@ -376,14 +478,17 @@ class Endpoint extends Base
 			return;
 		}
 
-		$payload = json_decode($raw_body, true);
-		if (!$payload || !isset($payload['type']))
+		try
+		{
+			$payload = Type::fromJson($raw_body);
+		}
+		catch (\Exception $e)
 		{
 			$this->sendJsonResponse(['error' => 'Invalid JSON'], 400);
 			return;
 		}
 
-		$type = $payload['type'];
+		$type = $payload->type;
 
 		switch ($type)
 		{
@@ -405,11 +510,11 @@ class Endpoint extends Base
 	 * Follow 요청 처리
 	 *
 	 * @param object $actor
-	 * @param array $payload
+	 * @param \ActivityPhp\Type\AbstractObject $payload
 	 */
 	protected function handleFollow($actor, $payload)
 	{
-		$follower_actor_url = $payload['actor'] ?? '';
+		$follower_actor_url = $payload->actor;
 		if (!$follower_actor_url || !filter_var($follower_actor_url, FILTER_VALIDATE_URL))
 		{
 			$this->sendJsonResponse(['error' => 'Invalid actor'], 400);
@@ -443,15 +548,14 @@ class Endpoint extends Base
 
 		// Accept 응답 전송
 		$actor_url = ActorModel::getActorUrl($actor->preferred_username);
-		$accept = [
+		$accept = Type::create('Accept', [
 			'@context' => 'https://www.w3.org/ns/activitystreams',
 			'id' => $actor_url . '/accept/' . time(),
-			'type' => 'Accept',
 			'actor' => $actor_url,
-			'object' => $payload,
-		];
+			'object' => $payload->toArray(),
+		]);
 
-		$body = json_encode($accept, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+		$body = $accept->toJson(JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 		$this->sendSignedRequest($actor, $follower_inbox_url, $body);
 
 		$this->sendJsonResponse(['status' => 'accepted'], 202);
@@ -461,18 +565,18 @@ class Endpoint extends Base
 	 * Undo 요청 처리 (Unfollow)
 	 *
 	 * @param object $actor
-	 * @param array $payload
+	 * @param \ActivityPhp\Type\AbstractObject $payload
 	 */
 	protected function handleUndo($actor, $payload)
 	{
-		$object = $payload['object'] ?? null;
-		if (!$object || !is_array($object) || ($object['type'] ?? '') !== 'Follow')
+		$object = $payload->object;
+		if (!$object || !($object instanceof \ActivityPhp\Type\AbstractObject) || $object->type !== 'Follow')
 		{
 			$this->sendJsonResponse(['status' => 'accepted'], 202);
 			return;
 		}
 
-		$follower_actor_url = $payload['actor'] ?? '';
+		$follower_actor_url = $payload->actor;
 		if ($follower_actor_url)
 		{
 			ActorModel::removeFollower($actor->actor_srl, $follower_actor_url);
@@ -624,20 +728,36 @@ class Endpoint extends Base
 		// 팔로워 수 가져오기
 		$followers_output = ActorModel::getFollowers($actor->actor_srl);
 		$total_items = 0;
+		$follower_urls = [];
 		if ($followers_output->toBool() && !empty($followers_output->data))
 		{
 			$followers = is_array($followers_output->data) ? $followers_output->data : [$followers_output->data];
 			$total_items = count($followers);
+
+			// 팔로워 목록 비공개가 아닌 경우에만 URL 목록 포함
+			if (($actor->hide_followers ?? 'N') !== 'Y')
+			{
+				foreach ($followers as $follower)
+				{
+					$follower_urls[] = $follower->follower_actor_url;
+				}
+			}
 		}
 
-		$response = [
+		$collection_data = [
 			'@context' => 'https://www.w3.org/ns/activitystreams',
 			'id' => $followers_url,
-			'type' => 'OrderedCollection',
 			'totalItems' => $total_items,
 		];
 
-		$this->sendJsonResponse($response, 200, 'application/activity+json');
+		if (!empty($follower_urls))
+		{
+			$collection_data['orderedItems'] = $follower_urls;
+		}
+
+		$response = Type::create('OrderedCollection', $collection_data);
+
+		$this->sendActivityResponse($response);
 	}
 
 	/**
@@ -668,14 +788,13 @@ class Endpoint extends Base
 		$following_url = ActorModel::getFollowingUrl($actor->preferred_username);
 
 		// 이 서버에서는 다른 Actor를 팔로우하지 않으므로 항상 빈 컬렉션
-		$response = [
+		$response = Type::create('OrderedCollection', [
 			'@context' => 'https://www.w3.org/ns/activitystreams',
 			'id' => $following_url,
-			'type' => 'OrderedCollection',
 			'totalItems' => 0,
-		];
+		]);
 
-		$this->sendJsonResponse($response, 200, 'application/activity+json');
+		$this->sendActivityResponse($response);
 	}
 
 	/**
@@ -698,15 +817,14 @@ class Endpoint extends Base
 
 			$shared_inbox_url = ActorModel::getSharedInboxUrl();
 
-			$response = [
+			$sharedInboxCollection = Type::create('OrderedCollection', [
 				'@context' => 'https://www.w3.org/ns/activitystreams',
 				'id' => $shared_inbox_url,
-				'type' => 'OrderedCollection',
 				'totalItems' => 0,
 				'orderedItems' => [],
-			];
+			]);
 
-			$this->sendJsonResponse($response, 200, 'application/activity+json');
+			$this->sendActivityResponse($sharedInboxCollection);
 			return;
 		}
 
@@ -718,8 +836,11 @@ class Endpoint extends Base
 			return;
 		}
 
-		$payload = json_decode($raw_body, true);
-		if (!$payload || !isset($payload['type']))
+		try
+		{
+			$payload = Type::fromJson($raw_body);
+		}
+		catch (\Exception $e)
 		{
 			$this->sendJsonResponse(['error' => 'Invalid JSON'], 400);
 			return;
@@ -733,7 +854,7 @@ class Endpoint extends Base
 			return;
 		}
 
-		$type = $payload['type'];
+		$type = $payload->type;
 
 		switch ($type)
 		{
@@ -754,26 +875,28 @@ class Endpoint extends Base
 	/**
 	 * Activity payload에서 대상 Actor를 결정
 	 *
-	 * @param array $payload
+	 * @param \ActivityPhp\Type\AbstractObject $payload
 	 * @return object|null
 	 */
 	protected function resolveTargetActorFromPayload($payload)
 	{
-		$type = $payload['type'] ?? '';
+		$type = $payload->type ?? '';
 		$target_url = '';
 
 		// Follow: object가 대상 Actor URL
 		if ($type === 'Follow')
 		{
-			$target_url = is_string($payload['object'] ?? null) ? $payload['object'] : '';
+			$object = $payload->object;
+			$target_url = is_string($object) ? $object : '';
 		}
 		// Undo: 내부 object에서 대상 찾기
-		elseif ($type === 'Undo' && is_array($payload['object'] ?? null))
+		elseif ($type === 'Undo' && $payload->object instanceof \ActivityPhp\Type\AbstractObject)
 		{
-			$inner = $payload['object'];
-			if (($inner['type'] ?? '') === 'Follow')
+			$inner = $payload->object;
+			if ($inner->type === 'Follow')
 			{
-				$target_url = is_string($inner['object'] ?? null) ? $inner['object'] : '';
+				$inner_object = $inner->object;
+				$target_url = is_string($inner_object) ? $inner_object : '';
 			}
 		}
 
@@ -950,6 +1073,20 @@ class Endpoint extends Base
 		}
 		$dt = \DateTime::createFromFormat('YmdHis', $regdate);
 		return $dt ? $dt->format('c') : date('c');
+	}
+
+	/**
+	 * ActivityPub Type 객체를 JSON 응답으로 전송
+	 *
+	 * @param \ActivityPhp\Type\AbstractObject $type
+	 * @param int $status_code
+	 */
+	protected function sendActivityResponse($type, $status_code = 200)
+	{
+		http_response_code($status_code);
+		header('Content-Type: application/activity+json; charset=utf-8');
+		echo $type->toJson(JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+		exit;
 	}
 
 	/**

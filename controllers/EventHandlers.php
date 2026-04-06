@@ -4,6 +4,8 @@ namespace Rhymix\Modules\Activitypub\Controllers;
 
 use Rhymix\Modules\Activitypub\Models\Actor as ActorModel;
 use Rhymix\Modules\Activitypub\Models\Config as ConfigModel;
+use ActivityPhp\Type;
+use ActivityPhp\Type\TypeConfiguration;
 
 /**
  * ActivityPub 연동 모듈 - 이벤트 핸들러 (트리거)
@@ -202,6 +204,8 @@ class EventHandlers extends Base
 	 */
 	protected function deliverDocumentToFollowers($actor, $document)
 	{
+		TypeConfiguration::set('undefined_properties', 'include');
+
 		$site_url = ActorModel::getSiteUrl();
 		$actor_url = ActorModel::getActorUrl($actor->preferred_username);
 		$document_srl = $document->document_srl;
@@ -228,29 +232,27 @@ class EventHandlers extends Base
 
 		$published = date('c');
 		$note_id = $actor_url . '/note/' . $document_srl;
+		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
 
-		$note = [
-			'@context' => 'https://www.w3.org/ns/activitystreams',
+		$note = Type::create('Note', [
 			'id' => $note_id,
-			'type' => 'Note',
 			'published' => $published,
 			'attributedTo' => $actor_url,
 			'content' => $html_content,
 			'url' => $document_url,
 			'to' => ['https://www.w3.org/ns/activitystreams#Public'],
-			'cc' => [$actor_url . '/followers'],
-		];
+			'cc' => [$followers_url],
+		]);
 
-		$activity = [
+		$activity = Type::create('Create', [
 			'@context' => 'https://www.w3.org/ns/activitystreams',
 			'id' => $note_id . '/activity',
-			'type' => 'Create',
 			'actor' => $actor_url,
 			'published' => $published,
 			'to' => ['https://www.w3.org/ns/activitystreams#Public'],
-			'cc' => [$actor_url . '/followers'],
-			'object' => $note,
-		];
+			'cc' => [$followers_url],
+			'object' => $note->toArray(),
+		]);
 
 		// 팔로워에게 전송
 		$this->deliverToFollowers($actor, $activity);
@@ -264,6 +266,8 @@ class EventHandlers extends Base
 	 */
 	protected function deliverCommentToFollowers($actor, $comment)
 	{
+		TypeConfiguration::set('undefined_properties', 'include');
+
 		$site_url = ActorModel::getSiteUrl();
 		$actor_url = ActorModel::getActorUrl($actor->preferred_username);
 		$comment_srl = $comment->comment_srl;
@@ -288,30 +292,28 @@ class EventHandlers extends Base
 		$published = date('c');
 		$note_id = $actor_url . '/comment/' . $comment_srl;
 		$parent_note_id = $actor_url . '/note/' . $document_srl;
+		$followers_url = ActorModel::getFollowersUrl($actor->preferred_username);
 
-		$note = [
-			'@context' => 'https://www.w3.org/ns/activitystreams',
+		$note = Type::create('Note', [
 			'id' => $note_id,
-			'type' => 'Note',
 			'published' => $published,
 			'attributedTo' => $actor_url,
 			'content' => $html_content,
 			'url' => $comment_url,
 			'inReplyTo' => $parent_note_id,
 			'to' => ['https://www.w3.org/ns/activitystreams#Public'],
-			'cc' => [$actor_url . '/followers'],
-		];
+			'cc' => [$followers_url],
+		]);
 
-		$activity = [
+		$activity = Type::create('Create', [
 			'@context' => 'https://www.w3.org/ns/activitystreams',
 			'id' => $note_id . '/activity',
-			'type' => 'Create',
 			'actor' => $actor_url,
 			'published' => $published,
 			'to' => ['https://www.w3.org/ns/activitystreams#Public'],
-			'cc' => [$actor_url . '/followers'],
-			'object' => $note,
-		];
+			'cc' => [$followers_url],
+			'object' => $note->toArray(),
+		]);
 
 		$this->deliverToFollowers($actor, $activity);
 	}
@@ -320,7 +322,7 @@ class EventHandlers extends Base
 	 * Activity를 팔로워에게 배달
 	 *
 	 * @param object $actor
-	 * @param array $activity
+	 * @param \ActivityPhp\Type\AbstractObject $activity
 	 */
 	protected function deliverToFollowers($actor, $activity)
 	{
@@ -331,7 +333,7 @@ class EventHandlers extends Base
 		}
 
 		$followers = is_array($followers_output->data) ? $followers_output->data : [$followers_output->data];
-		$body = json_encode($activity, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+		$body = $activity->toJson(JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
 		// Shared inbox 를 사용하여 중복 전송 방지
 		$delivered_inboxes = [];

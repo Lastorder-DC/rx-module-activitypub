@@ -53,6 +53,12 @@ class Install extends Base
 			return true;
 		}
 
+		// hide_followers 컬럼이 없으면 업데이트 필요
+		if (!$oDB->isColumnExists('activitypub_actors', 'hide_followers'))
+		{
+			return true;
+		}
+
 		return false;
 	}
 
@@ -108,6 +114,12 @@ class Install extends Base
 		{
 			$oDB->addColumn('activitypub_actors', 'is_deleted', 'char', 1, 'N', true, 'private_key');
 			$oDB->addIndex('activitypub_actors', 'idx_is_deleted', ['is_deleted']);
+		}
+
+		// hide_followers 컬럼 추가
+		if (!$oDB->isColumnExists('activitypub_actors', 'hide_followers'))
+		{
+			$oDB->addColumn('activitypub_actors', 'hide_followers', 'char', 1, 'N', true, 'private_key');
 		}
 
 		return new \BaseObject();

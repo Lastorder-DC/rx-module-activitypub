@@ -14,6 +14,7 @@
 		<column name="icon_url" var="icon_url" />
 		<column name="public_key" var="public_key" notnull="notnull" />
 		<column name="private_key" var="private_key" notnull="notnull" />
+		<column name="hide_followers" var="hide_followers" />
 		<column name="regdate" var="regdate" />
 	</columns>
 </query>
