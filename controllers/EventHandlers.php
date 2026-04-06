@@ -257,8 +257,8 @@ class EventHandlers extends Base
 			$oDocument = \DocumentModel::getDocument($document_srl);
 			if ($oDocument && $oDocument->document_srl)
 			{
-				$module_srl = $module_srl ?: ($oDocument->module_srl ?? 0);
-				$member_srl = $member_srl ?: ($oDocument->member_srl ?? 0);
+				$module_srl = $module_srl ?: intval($oDocument->module_srl);
+				$member_srl = $member_srl ?: intval($oDocument->member_srl);
 				self::debugLog('[sendDeleteDocumentActivity] After DB lookup: module_srl=' . $module_srl . ', member_srl=' . $member_srl);
 			}
 			else
@@ -343,8 +343,8 @@ class EventHandlers extends Base
 			$comment = \CommentModel::getComment($obj->comment_srl);
 			if ($comment && $comment->comment_srl)
 			{
-				$module_srl = $module_srl ?: ($comment->module_srl ?? 0);
-				$document_srl = $document_srl ?: ($comment->document_srl ?? 0);
+				$module_srl = $module_srl ?: intval($comment->module_srl);
+				$document_srl = $document_srl ?: intval($comment->document_srl);
 			}
 		}
 
@@ -440,8 +440,8 @@ class EventHandlers extends Base
 			$comment = \CommentModel::getComment($comment_srl);
 			if ($comment && $comment->comment_srl)
 			{
-				$module_srl = $module_srl ?: ($comment->module_srl ?? 0);
-				$member_srl = $member_srl ?: ($comment->member_srl ?? 0);
+				$module_srl = $module_srl ?: intval($comment->module_srl);
+				$member_srl = $member_srl ?: intval($comment->member_srl);
 			}
 		}
 
