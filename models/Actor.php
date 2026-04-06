@@ -595,6 +595,93 @@ class Actor
 	}
 
 	/**
+	 * AP로 발송된 활동 기록 추가
+	 *
+	 * @param int $actor_srl
+	 * @param string $object_type 'document' or 'comment'
+	 * @param int $object_srl
+	 * @param int $module_srl
+	 * @param int $member_srl
+	 * @return object
+	 */
+	public static function addActivity($actor_srl, $object_type, $object_srl, $module_srl = 0, $member_srl = 0)
+	{
+		// 이미 존재하는지 확인
+		$existing = self::getActivityByActorAndObject($actor_srl, $object_type, $object_srl);
+		if ($existing)
+		{
+			return new \BaseObject();
+		}
+
+		$args = new \stdClass;
+		$args->activity_srl = getNextSequence();
+		$args->actor_srl = $actor_srl;
+		$args->object_type = $object_type;
+		$args->object_srl = $object_srl;
+		$args->module_srl = $module_srl;
+		$args->member_srl = $member_srl;
+		$args->regdate = date('YmdHis');
+		return executeQuery('activitypub.insertActivity', $args);
+	}
+
+	/**
+	 * 특정 오브젝트에 대한 활동 기록 가져오기
+	 *
+	 * @param string $object_type 'document' or 'comment'
+	 * @param int $object_srl
+	 * @return array
+	 */
+	public static function getActivitiesByObjectSrl($object_type, $object_srl)
+	{
+		$args = new \stdClass;
+		$args->object_type = $object_type;
+		$args->object_srl = $object_srl;
+		$output = executeQuery('activitypub.getActivitiesByObjectSrl', $args);
+		if (!$output->toBool() || !$output->data)
+		{
+			return [];
+		}
+		return is_array($output->data) ? $output->data : [$output->data];
+	}
+
+	/**
+	 * 특정 Actor + 오브젝트에 대한 활동 기록 가져오기
+	 *
+	 * @param int $actor_srl
+	 * @param string $object_type
+	 * @param int $object_srl
+	 * @return object|null
+	 */
+	public static function getActivityByActorAndObject($actor_srl, $object_type, $object_srl)
+	{
+		$args = new \stdClass;
+		$args->actor_srl = $actor_srl;
+		$args->object_type = $object_type;
+		$args->object_srl = $object_srl;
+		$output = executeQuery('activitypub.getActivityByActorAndObject', $args);
+		if (!$output->toBool() || !$output->data)
+		{
+			return null;
+		}
+		return $output->data;
+	}
+
+	/**
+	 * 특정 오브젝트에 대한 활동 기록 삭제
+	 *
+	 * @param string $object_type 'document' or 'comment'
+	 * @param int $object_srl
+	 * @return object
+	 */
+	public static function deleteActivitiesByObjectSrl($object_type, $object_srl)
+	{
+		$args = new \stdClass;
+		$args->object_type = $object_type;
+		$args->object_srl = $object_srl;
+		return executeQuery('activitypub.deleteActivitiesByObjectSrl', $args);
+	}
+
+	/**
 	 * RSA 키 쌍 생성
 	 *
 	 * @return array|null ['public' => '...', 'private' => '...']

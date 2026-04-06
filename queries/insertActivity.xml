@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<query id="insertActivity" action="insert">
+	<tables>
+		<table name="activitypub_activities" />
+	</tables>
+	<columns>
+		<column name="activity_srl" var="activity_srl" filter="number" notnull="notnull" />
+		<column name="actor_srl" var="actor_srl" filter="number" notnull="notnull" />
+		<column name="object_type" var="object_type" notnull="notnull" />
+		<column name="object_srl" var="object_srl" filter="number" notnull="notnull" />
+		<column name="module_srl" var="module_srl" filter="number" />
+		<column name="member_srl" var="member_srl" filter="number" />
+		<column name="regdate" var="regdate" />
+	</columns>
+</query>

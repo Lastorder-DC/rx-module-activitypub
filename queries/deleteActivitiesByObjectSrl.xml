@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<query id="deleteActivitiesByObjectSrl" action="delete">
+	<tables>
+		<table name="activitypub_activities" />
+	</tables>
+	<conditions>
+		<condition operation="equal" column="object_type" var="object_type" notnull="notnull" />
+		<condition operation="equal" column="object_srl" var="object_srl" filter="number" notnull="notnull" pipe="and" />
+	</conditions>
+</query>
