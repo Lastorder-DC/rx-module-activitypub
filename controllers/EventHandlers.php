@@ -214,6 +214,7 @@ class EventHandlers extends Base
 	 */
 	public function beforeDeleteDocument($obj)
 	{
+		self::debugLog('[beforeDeleteDocument] Triggered with document_srl=' . (isset($obj->document_srl) ? $obj->document_srl : 'null'));
 		$this->sendDeleteDocumentActivity($obj);
 	}
 
@@ -225,6 +226,7 @@ class EventHandlers extends Base
 	 */
 	public function beforeMoveDocumentToTrash($obj)
 	{
+		self::debugLog('[beforeMoveDocumentToTrash] Triggered with document_srl=' . (isset($obj->document_srl) ? $obj->document_srl : 'null'));
 		$this->sendDeleteDocumentActivity($obj);
 	}
 
@@ -235,8 +237,11 @@ class EventHandlers extends Base
 	 */
 	protected function sendDeleteDocumentActivity($obj)
 	{
+		self::debugLog('[sendDeleteDocumentActivity] Called with document_srl=' . (isset($obj->document_srl) ? $obj->document_srl : 'null') . ', module_srl=' . (isset($obj->module_srl) ? $obj->module_srl : 'null') . ', member_srl=' . (isset($obj->member_srl) ? $obj->member_srl : 'null'));
+
 		if (!$obj || !isset($obj->document_srl))
 		{
+			self::debugLog('[sendDeleteDocumentActivity] No obj or document_srl, returning');
 			return;
 		}
 
@@ -245,6 +250,8 @@ class EventHandlers extends Base
 		$module_srl = $obj->module_srl ?? 0;
 		$member_srl = $obj->member_srl ?? 0;
 
+		self::debugLog('[sendDeleteDocumentActivity] document_srl=' . $document_srl . ', module_srl=' . $module_srl . ', member_srl=' . $member_srl);
+
 		if (!$module_srl || !$member_srl)
 		{
 			$oDocument = \DocumentModel::getDocument($document_srl);
@@ -252,19 +259,28 @@ class EventHandlers extends Base
 			{
 				$module_srl = $module_srl ?: ($oDocument->module_srl ?? 0);
 				$member_srl = $member_srl ?: ($oDocument->member_srl ?? 0);
+				self::debugLog('[sendDeleteDocumentActivity] After DB lookup: module_srl=' . $module_srl . ', member_srl=' . $member_srl);
+			}
+			else
+			{
+				self::debugLog('[sendDeleteDocumentActivity] DB lookup failed for document_srl=' . $document_srl);
 			}
 		}
 
 		if (!$module_srl)
 		{
+			self::debugLog('[sendDeleteDocumentActivity] No module_srl, returning');
 			return;
 		}
 
 		$actors = ActorModel::getActorsForDocument($module_srl, $member_srl);
 		if (empty($actors))
 		{
+			self::debugLog('[sendDeleteDocumentActivity] No actors found for module_srl=' . $module_srl . ', member_srl=' . $member_srl);
 			return;
 		}
+
+		self::debugLog('[sendDeleteDocumentActivity] Found ' . count($actors) . ' actor(s), queue_available=' . (self::isQueueAvailable() ? 'true' : 'false'));
 
 		foreach ($actors as $actor)
 		{
@@ -276,6 +292,8 @@ class EventHandlers extends Base
 				$args->module_srl = $module_srl;
 				$args->activity_type = 'Delete';
 
+				self::debugLog('[sendDeleteDocumentActivity] Adding queue task for actor_srl=' . $actor->actor_srl . ', activity_type=Delete');
+
 				\Rhymix\Framework\Queue::addTask(
 					'Rhymix\\Modules\\Activitypub\\Controllers\\EventHandlers::processDocumentDeliveryTask',
 					$args
@@ -283,6 +301,7 @@ class EventHandlers extends Base
 			}
 			else
 			{
+				self::debugLog('[sendDeleteDocumentActivity] Sending synchronously for actor_srl=' . $actor->actor_srl);
 				self::deliverDocumentDeleteToFollowers($actor, $document_srl);
 			}
 		}
