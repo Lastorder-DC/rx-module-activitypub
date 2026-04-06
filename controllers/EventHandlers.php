@@ -126,7 +126,7 @@ class EventHandlers extends Base
 		}
 
 		// 댓글 AP 전송이 비활성화된 경우 제외
-		if (($config->send_comments ?? 'Y') !== 'Y')
+		if (($config->send_comments ?? 'N') !== 'Y')
 		{
 			return;
 		}
@@ -391,7 +391,7 @@ class EventHandlers extends Base
 		}
 
 		// 댓글 AP 전송이 비활성화된 경우 제외
-		if (($config->send_comments ?? 'Y') !== 'Y')
+		if (($config->send_comments ?? 'N') !== 'Y')
 		{
 			return;
 		}
@@ -513,7 +513,7 @@ class EventHandlers extends Base
 
 		// 댓글 AP 전송이 비활성화된 경우 제외
 		$config = ConfigModel::getConfig();
-		if (($config->send_comments ?? 'Y') !== 'Y')
+		if (($config->send_comments ?? 'N') !== 'Y')
 		{
 			return;
 		}
