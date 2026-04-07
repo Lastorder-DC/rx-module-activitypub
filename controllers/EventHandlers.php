@@ -173,6 +173,7 @@ class EventHandlers extends Base
 				$args->document_srl = $obj->document_srl;
 				$args->module_srl = $obj->module_srl;
 				$args->content = $obj->content ?? '';
+				$args->nick_name = $obj->nick_name ?? '';
 
 				\Rhymix\Framework\Queue::addTask(
 					'Rhymix\\Modules\\Activitypub\\Controllers\\EventHandlers::processCommentDeliveryTask',
@@ -450,6 +451,7 @@ class EventHandlers extends Base
 				$args->document_srl = $document_srl;
 				$args->module_srl = $module_srl;
 				$args->content = $obj->content ?? '';
+				$args->nick_name = $obj->nick_name ?? '';
 				$args->activity_type = 'Update';
 
 				\Rhymix\Framework\Queue::addTask(
@@ -972,16 +974,18 @@ class EventHandlers extends Base
 		// 내용
 		$content = $comment->content ?? '';
 		$content_text = self::truncateContent($content);
+		$nick_name = $comment->nick_name ?? '';
 
-		$html_content = '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
-		$html_content .= '<p><a href="' . htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
+		// HTML 컨텐츠 생성
+		$noteContent = self::buildCommentNoteContent($content_text, $nick_name, $comment_url, $actor);
+		$html_content = $noteContent['content'];
 
 		$published = date('c');
 		$note_id = ActorModel::getCommentNoteUrl($actor->preferred_username, $comment_srl);
 		$parent_note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
 		$recipients = self::getVisibilityRecipients($actor);
 
-		$note = Type::create('Note', [
+		$note_data = [
 			'id' => $note_id,
 			'published' => $published,
 			'attributedTo' => $actor_url,
@@ -990,7 +994,13 @@ class EventHandlers extends Base
 			'inReplyTo' => $parent_note_id,
 			'to' => $recipients['to'],
 			'cc' => $recipients['cc'],
-		]);
+		];
+		if ($noteContent['summary'] !== null)
+		{
+			$note_data['summary'] = $noteContent['summary'];
+		}
+
+		$note = Type::create('Note', $note_data);
 
 		$activity = Type::create('Create', [
 			'@context' => 'https://www.w3.org/ns/activitystreams',
@@ -1139,16 +1149,18 @@ class EventHandlers extends Base
 
 		$content = $comment->content ?? '';
 		$content_text = self::truncateContent($content);
+		$nick_name = $comment->nick_name ?? '';
 
-		$html_content = '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
-		$html_content .= '<p><a href="' . htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8') . '</a></p>';
+		// HTML 컨텐츠 생성
+		$noteContent = self::buildCommentNoteContent($content_text, $nick_name, $comment_url, $actor);
+		$html_content = $noteContent['content'];
 
 		$updated = date('c');
 		$note_id = ActorModel::getCommentNoteUrl($actor->preferred_username, $comment_srl);
 		$parent_note_id = ActorModel::getNoteUrl($actor->preferred_username, $document_srl);
 		$recipients = self::getVisibilityRecipients($actor);
 
-		$note = Type::create('Note', [
+		$note_data = [
 			'id' => $note_id,
 			'updated' => $updated,
 			'attributedTo' => $actor_url,
@@ -1157,7 +1169,13 @@ class EventHandlers extends Base
 			'inReplyTo' => $parent_note_id,
 			'to' => $recipients['to'],
 			'cc' => $recipients['cc'],
-		]);
+		];
+		if ($noteContent['summary'] !== null)
+		{
+			$note_data['summary'] = $noteContent['summary'];
+		}
+
+		$note = Type::create('Note', $note_data);
 
 		$activity = Type::create('Update', [
 			'@context' => 'https://www.w3.org/ns/activitystreams',
