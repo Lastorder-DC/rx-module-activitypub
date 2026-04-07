@@ -121,6 +121,9 @@ class Admin extends Base
 		// 본문 포함 여부 설정
 		$config->include_content = in_array($vars->include_content ?? '', ['Y', 'cw'], true) ? $vars->include_content : 'N';
 
+		// 댓글 컨텐츠 표시 모드 설정
+		$config->comment_content_mode = ($vars->comment_content_mode ?? '') === 'cw' ? 'cw' : 'plain';
+
 		// Outbox 페이지당 항목 수 설정
 		$outbox_page_size = intval($vars->outbox_page_size ?? 20);
 		$config->outbox_page_size = max(5, min(100, $outbox_page_size));

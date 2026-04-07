@@ -143,6 +143,63 @@ class Base extends \ModuleObject
 	}
 
 	/**
+	 * 댓글 Note의 HTML 컨텐츠와 summary를 생성
+	 *
+	 * @param string $content_text strip_tags 및 truncate 처리된 댓글 본문 텍스트
+	 * @param string $nick_name 작성자 닉네임
+	 * @param string $comment_url 댓글 URL
+	 * @param object $actor Actor 객체
+	 * @return array ['content' => string, 'summary' => string|null]
+	 */
+	public static function buildCommentNoteContent($content_text, $nick_name, $comment_url, $actor)
+	{
+		$comment_content_mode = \Rhymix\Modules\Activitypub\Models\Config::getCommentContentMode();
+		$escaped_url = htmlspecialchars($comment_url, ENT_QUOTES, 'UTF-8');
+		$show_author = $nick_name && ($actor->actor_type ?? 'board') === 'board';
+
+		$result = ['content' => '', 'summary' => null];
+
+		if ($comment_content_mode === 'cw')
+		{
+			// CW 모드: summary에 작성자, content에 댓글 본문+링크
+			if ($show_author)
+			{
+				$result['summary'] = self::getAuthorLabel() . ': ' . $nick_name;
+			}
+
+			$html_content = '';
+			if ($content_text !== '')
+			{
+				$html_content .= '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8') . '</p>';
+			}
+			$html_content .= '<p><a href="' . $escaped_url . '">' . $escaped_url . '</a></p>';
+			$result['content'] = $html_content;
+		}
+		else
+		{
+			// 일반 모드: content에 댓글 본문+작성자+링크
+			$html_content = '';
+			if ($content_text !== '')
+			{
+				$html_content .= '<p>' . htmlspecialchars($content_text, ENT_QUOTES, 'UTF-8');
+				if ($show_author)
+				{
+					$html_content .= '<br />' . self::getAuthorLabel() . ': ' . htmlspecialchars($nick_name, ENT_QUOTES, 'UTF-8');
+				}
+				$html_content .= '</p>';
+			}
+			elseif ($show_author)
+			{
+				$html_content .= '<p>' . self::getAuthorLabel() . ': ' . htmlspecialchars($nick_name, ENT_QUOTES, 'UTF-8') . '</p>';
+			}
+			$html_content .= '<p><a href="' . $escaped_url . '">' . $escaped_url . '</a></p>';
+			$result['content'] = $html_content;
+		}
+
+		return $result;
+	}
+
+	/**
 	 * 허용되는 이미지 MIME 타입 목록
 	 */
 	protected static $allowedImageMimeTypes = [

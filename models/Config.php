@@ -73,6 +73,18 @@ class Config
 	}
 
 	/**
+	 * 댓글 컨텐츠 표시 모드 설정값 반환
+	 *
+	 * @return string 'plain'(일반 표시), 'cw'(CW 처리)
+	 */
+	public static function getCommentContentMode()
+	{
+		$config = self::getConfig();
+		$value = $config->comment_content_mode ?? 'plain';
+		return $value === 'cw' ? 'cw' : 'plain';
+	}
+
+	/**
 	 * 모듈 설정을 저장하는 함수.
 	 *
 	 * @param object $config

@@ -100,6 +100,19 @@
 		</div>
 
 		<div class="x_control-group">
+			<label class="x_control-label">{{ $lang->cmd_activitypub_comment_content_mode }}</label>
+			<div class="x_controls">
+				<label class="x_inline">
+					<input type="radio" name="comment_content_mode" value="plain" @checked(($config->comment_content_mode ?? 'plain') === 'plain') /> {{ $lang->cmd_activitypub_comment_content_plain }}
+				</label>
+				<label class="x_inline">
+					<input type="radio" name="comment_content_mode" value="cw" @checked(($config->comment_content_mode ?? 'plain') === 'cw') /> {{ $lang->cmd_activitypub_comment_content_cw }}
+				</label>
+				<p class="x_help-block">{{ $lang->cmd_activitypub_comment_content_mode_desc }}</p>
+			</div>
+		</div>
+
+		<div class="x_control-group">
 			<label class="x_control-label">{{ $lang->cmd_activitypub_outbox_page_size }}</label>
 			<div class="x_controls">
 				<input type="number" name="outbox_page_size" value="{{ $config->outbox_page_size ?? 20 }}" min="5" max="100" class="x_input-small" />
