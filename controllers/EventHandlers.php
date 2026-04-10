@@ -668,10 +668,7 @@ class EventHandlers extends Base
 	 */
 	protected static function isQueueAvailable()
 	{
-		return class_exists('Rhymix\\Framework\\Queue')
-			&& function_exists('config')
-			&& config('queue.enabled')
-			&& !defined('RXQUEUE_CRON');
+		return config('queue.enabled');
 	}
 
 	/**
