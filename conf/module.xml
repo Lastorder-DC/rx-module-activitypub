@@ -35,7 +35,6 @@
 		<eventHandler after="comment.updateComment" class="Controllers\EventHandlers" method="afterUpdateComment" />
 		<eventHandler before="comment.deleteComment" class="Controllers\EventHandlers" method="beforeDeleteComment" />
 		<eventHandler before="comment.moveCommentToTrash" class="Controllers\EventHandlers" method="beforeMoveCommentToTrash" />
-		<eventHandler before="moduleHandler.proc" class="Controllers\EventHandlers" method="beforeModuleHandlerProc" />
 	</eventHandlers>
 	<menus>
 		<menu name="activitypub" type="all">
